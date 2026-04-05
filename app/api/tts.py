@@ -6,7 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.db.engine import VoiceProfile, User, get_session
-from app.auth.manager import fastapi_users
+from app.auth.manager import fastapi_users, get_user_manager, UserManager, auth_backend
 from app.core.slot_manager import SlotManager
 from app.core.worker_pool import WorkerPool, InferenceTask
 from app.core.audio_encoder import AudioEncoder
@@ -27,15 +27,15 @@ container = TTSServiceContainer()
 async def tts_stream(
     websocket: WebSocket,
     token: str = Query(...),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    user_manager: UserManager = Depends(get_user_manager)
 ):
     """
     WebSocket 实时流式合成接口
     """
     # 1. 认证
-    from app.auth.manager import auth_backend
     strategy = auth_backend.get_strategy()
-    user = await strategy.read_token(token, fastapi_users.get_user_manager())
+    user = await strategy.read_token(token, user_manager)
     if not user or not user.is_active:
         await websocket.close(code=4001, reason="Unauthorized")
         return
@@ -95,9 +95,13 @@ async def tts_stream(
                 await websocket.send_json({"error": "inference_timeout"})
                 break
                 
-            # 从 SHM 读取 PCM 数据 (由于目前没有记录确切 size，暂读全量或由 Worker 标记)
-            # 注意：实际生产中需要从 UDS 信令中转发确切的 size
-            pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=2*1024*1024)
+            # 从 SHM 读取推理 Worker 写入的真实 PCM 数据
+            data_size = container.slot_manager.get_last_size(slot_id)
+            if data_size <= 0:
+                logger.warning(f"Inference produced no data for slot {slot_id}")
+                continue
+
+            pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=data_size)
             
             # 编码 Ogg/Opus
             opus_chunks = encoder.encode_opus_streaming([pcm_data])

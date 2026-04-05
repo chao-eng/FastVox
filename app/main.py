@@ -51,9 +51,12 @@ async def lifespan(app: FastAPI):
                 data = await loop.sock_recv(sock, 16)
                 import struct
                 slot_id, offset, size, status = struct.unpack('IIII', data)
-                if status == 2: slot_manager.mark_ready(slot_id)
-                elif status == 3: slot_manager.mark_ready(slot_id)
-            except: break
+                if status == 2: # READY
+                    slot_manager.mark_ready(slot_id, size)
+                elif status == 3: # ERROR
+                    slot_manager.mark_ready(slot_id, 0)
+            except: 
+                break
 
     worker_pool.start()
     asyncio.create_task(uds_reader())

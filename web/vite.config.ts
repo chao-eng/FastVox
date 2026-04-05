@@ -18,8 +18,9 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '/api/v1'), // 转发到后端 API
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'http://localhost:8000',
         ws: true,
+        changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ws/, '/api/v1/tts/stream'), // 转发到后端 WebSocket
       },
     },

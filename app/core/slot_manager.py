@@ -15,6 +15,7 @@ class SlotInfo:
     request_id: Optional[str] = None
     acquired_at: float = 0.0
     status: str = "IDLE" # IDLE, BUSY, ERROR
+    last_size: int = 0   # 最后一次推理产生的实际字节数
 
 class SlotManager:
     """
@@ -53,6 +54,7 @@ class SlotManager:
         slot.request_id = request_id
         slot.acquired_at = time.time()
         slot.status = "BUSY"
+        slot.last_size = 0 # 重置 size
         
         # 重置同步事件
         self._events[slot_id].clear()
@@ -73,6 +75,7 @@ class SlotManager:
         slot.request_id = None
         slot.status = "IDLE"
         slot.acquired_at = 0.0
+        slot.last_size = 0
         
         self._free_slots.add(slot_id)
         self._semaphore.release()
@@ -85,10 +88,16 @@ class SlotManager:
         task.slot_id = slot_id
         self._worker_pool.submit_task(task)
 
-    def mark_ready(self, slot_id: int):
+    def mark_ready(self, slot_id: int, size: int = 0):
         """UDS Server 收到 Ready 信令后调用"""
         if slot_id in self._events:
+            if slot_id in self._slots:
+                self._slots[slot_id].last_size = size
             self._events[slot_id].set()
+
+    def get_last_size(self, slot_id: int) -> int:
+        """获取 Slot 中最后一次产生的数据长度"""
+        return self._slots[slot_id].last_size if slot_id in self._slots else 0
 
     async def wait_for_ready(self, slot_id: int, timeout: float = 30.0):
         """等待推理完成事件"""

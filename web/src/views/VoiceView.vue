@@ -4,9 +4,11 @@ import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X } from 'lucide-vu
 import BaseButton from '../components/ui/BaseButton.vue';
 import client from '../api/client';
 
+const fileInput = ref<HTMLInputElement | null>(null);
 const showModal = ref(false);
-const voices = ref([]);
+const voices = ref<any[]>([]);
 const isUploading = ref(false);
+const isDragOver = ref(false);
 
 // 表单数据
 const form = ref({
@@ -17,18 +19,44 @@ const form = ref({
 
 const fetchVoices = async () => {
   try {
-    const data = await client.get('/voice/list');
+    const data: any = await client.get('/voice/list');
     voices.value = data;
   } catch (err) { console.error('Failed to fetch voices:', err); }
 };
 
 const handleFileChange = (e: Event) => {
   const target = e.target as HTMLInputElement;
-  if (target.files) form.value.file = target.files[0];
+  if (target.files && target.files.length > 0) {
+    form.value.file = target.files[0];
+  }
+};
+
+const triggerFileInput = () => {
+  fileInput.value?.click();
+};
+
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  isDragOver.value = true;
+};
+
+const handleDragLeave = () => {
+  isDragOver.value = false;
+};
+
+const handleDrop = (e: DragEvent) => {
+  e.preventDefault();
+  isDragOver.value = false;
+  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+    form.value.file = e.dataTransfer.files[0];
+  }
 };
 
 const handleUpload = async () => {
-  if (!form.value.file || !form.value.name) return;
+  if (!form.value.file || !form.value.name) {
+    alert('请填写名称并选择音频文件');
+    return;
+  }
   isUploading.value = true;
   
   const formData = new FormData();
@@ -41,15 +69,24 @@ const handleUpload = async () => {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     showModal.value = false;
+    // 重置表单
+    form.value = { name: '', prompt_text: '', file: null };
     fetchVoices();
-  } catch (err) { alert('上传失败，请检查文件格式及网络'); } 
-  finally { isUploading.value = false; }
+  } catch (err) { 
+    alert('上传失败，请检查文件格式及网络'); 
+  } finally { 
+    isUploading.value = false; 
+  }
 };
 
 const deleteVoice = async (id: string) => {
   if (!confirm('确定删除该声纹吗？')) return;
-  await client.delete(`/voice/${id}`);
-  fetchVoices();
+  try {
+    await client.delete(`/voice/${id}`);
+    fetchVoices();
+  } catch (err) {
+    alert('删除失败');
+  }
 };
 
 onMounted(fetchVoices);
@@ -73,18 +110,18 @@ onMounted(fetchVoices);
           <div class="icon-box"><Mic :size="20" stroke-width="1.5" /></div>
           <div class="voice-info">
             <h4>{{ v.name }}</h4>
-            <span class="duration">{{ v.duration }}</span>
+            <span class="duration">{{ v.duration_sec?.toFixed(1) }}s</span>
           </div>
         </div>
         
         <div class="card-body">
-          <div class="text-hint">参考文本:</div>
-          <p class="prompt-text">{{ v.text }}</p>
+          <div class="text-hint">注册日期:</div>
+          <p class="meta">{{ new Date(v.created_at).toLocaleDateString() }}</p>
         </div>
 
         <div class="card-footer">
-          <div class="meta"><Calendar :size="14" /> {{ v.created }}</div>
-          <BaseButton type="text" size="sm" class="delete-btn">
+          <div class="meta"><Calendar :size="14" /> {{ new Date(v.created_at).toLocaleTimeString() }}</div>
+          <BaseButton type="text" size="sm" class="delete-btn" @click="deleteVoice(v.id)">
             <Trash2 :size="14" />
           </BaseButton>
         </div>
@@ -107,21 +144,42 @@ onMounted(fetchVoices);
           <div class="modal-body">
             <div class="form-item">
               <label>声纹名称</label>
-              <input type="text" placeholder="例如：温柔青年音" class="input" />
+              <input v-model="form.name" type="text" placeholder="例如：温柔青年音" class="input" />
             </div>
             <div class="form-item">
               <label>参考文本 (与录音内容一致)</label>
-              <textarea placeholder="请输入参考音频对应的文本内容..." class="textarea"></textarea>
+              <textarea v-model="form.prompt_text" placeholder="请输入参考音频对应的文本内容..." class="textarea"></textarea>
             </div>
-            <div class="drop-zone">
-              <UploadCloud :size="48" stroke-width="1" />
-              <p>点击或拖拽 WAV/MP3 文件至此处</p>
+
+            <!-- 隐藏的文件输入框 -->
+            <input 
+              ref="fileInput"
+              type="file" 
+              style="display: none" 
+              accept=".wav,.mp3" 
+              @change="handleFileChange" 
+            />
+
+            <div 
+              class="drop-zone" 
+              :class="{ active: isDragOver || form.file }"
+              @click="triggerFileInput"
+              @dragover="handleDragOver"
+              @dragleave="handleDragLeave"
+              @drop="handleDrop"
+            >
+              <UploadCloud v-if="!form.file" :size="48" stroke-width="1" />
+              <FileText v-else :size="48" stroke-width="1" class="file-icon" />
+              
+              <p v-if="!form.file">点击或拖拽 WAV/MP3 文件至此处</p>
+              <p v-else class="file-name">{{ form.file.name }}</p>
+              
               <span class="limit">建议时长 3s-15s, 文件不超过 10MB</span>
             </div>
           </div>
           <div class="modal-footer">
             <BaseButton @click="showModal = false">取消</BaseButton>
-            <BaseButton type="primary" @click="handleUpload">开始提取</BaseButton>
+            <BaseButton type="primary" :loading="isUploading" @click="handleUpload">开始提取</BaseButton>
           </div>
         </div>
       </div>
@@ -188,8 +246,9 @@ onMounted(fetchVoices);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 32px; color: var(--color-text-disabled); cursor: pointer;
 }
-.drop-zone:hover { background: var(--color-bg-page); color: var(--color-primary); border-color: var(--color-primary); }
+.drop-zone:hover, .drop-zone.active { background: var(--color-bg-page); color: var(--color-primary); border-color: var(--color-primary); }
 .drop-zone p { margin: 12px 0 4px; font-weight: 500; }
+.file-name { color: var(--color-primary); font-weight: 600; }
 .limit { font-size: 11px; }
 
 .modal-footer { padding: 16px 24px; background: var(--color-bg-page); display: flex; justify-content: flex-end; gap: 12px; }

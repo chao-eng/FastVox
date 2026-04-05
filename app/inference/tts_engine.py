@@ -9,8 +9,9 @@ settings = get_settings()
 
 try:
     import sherpa_onnx
+    import av
 except ImportError:
-    logger.error("sherpa-onnx not installed, please run 'pip install sherpa-onnx'")
+    logger.error("Required libraries (sherpa-onnx or av) not installed.")
 
 class TTSInferenceError(Exception):
     """自定义推理异常"""
@@ -78,13 +79,29 @@ class TTSEngine:
             # 执行推理 (同步阻塞调用)
             # 对于 ZipVoice，必须提供参考音色信息
             if prompt_audio and prompt_text:
+                # 1. 使用 PyAV 读取参考音频并转换为 float32 NPCM
+                # 注意: 之前的 upload 逻辑已确保音频为 24kHz Mono
+                prompt_container = av.open(prompt_audio)
+                prompt_samples = []
+                for frame in prompt_container.decode(audio=0):
+                    # 转换为 float32 并归一化 (-1.0 到 1.0)
+                    s = frame.to_ndarray().flatten().astype(np.float32)
+                    # 判读原格式进行归一化
+                    if frame.format.name == 's16':
+                        s = s / 32768.0
+                    elif frame.format.name == 'flt':
+                        pass # 已经是 float
+                    prompt_samples.extend(s)
+                prompt_container.close()
+
+                # 2. 调用符合 ZipVoice 签名的 generate 方法
                 audio = self.tts.generate(
                     text=text,
-                    sid=0,
+                    prompt_text=prompt_text,
+                    prompt_samples=prompt_samples,
+                    sample_rate=24000, 
                     speed=speed,
-                    # 注意: 确保使用关键字参数以匹配 ZipVoice 模式下的 generate 签名
-                    speaker_audio=prompt_audio,
-                    speaker_text=prompt_text
+                    num_steps=self.num_steps
                 )
             else:
                 # ZipVoice 强制要求参考，若未提供则无法模拟合成

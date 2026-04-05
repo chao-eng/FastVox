@@ -50,20 +50,38 @@ async def upload_voice(
         target_filename = f"{voice_id}.wav"
         target_path = os.path.join(VOICES_DIR, target_filename)
         
-        # 将采样流重新编码为高质量 Wav
+        # --- 使用 AudioResampler 进行高质量重采样 ---
+        # 强制输出格式: 24000Hz, Mono, s16 (wav 16bit)
+        resampler = av.AudioResampler(
+            format='s16', 
+            layout='mono', 
+            rate=24000
+        )
+        
         output_container = av.open(target_path, mode='w', format='wav')
         output_stream = output_container.add_stream('pcm_s16le', rate=24000)
-        output_stream.channels = 1
-        output_stream.layout = 'mono'
+        output_stream.layout = 'mono' # 设置 layout 会自动配置 channels
+        
+        # 记录已提取总时间 (防止过短或过长)
+        processed_duration = 0.0
         
         for frame in container.decode(audio=0):
-            # 重采样并下混音
-            # 注意: 这里简化了重采样逻辑，生产环境应加入 av.AudioResampler
-            for packet in output_stream.encode(frame):
+            # 将输入帧重采样为输出所需格式
+            resampled_frames = resampler.resample(frame)
+            for rf in resampled_frames:
+                # 编码并写入
+                for packet in output_stream.encode(rf):
+                    output_container.mux(packet)
+                    
+        # 刷出重采样器缓冲区
+        for rf in resampler.resample(None):
+            for packet in output_stream.encode(rf):
                 output_container.mux(packet)
-                
+                    
+        # 刷出编码缓冲区
         for packet in output_stream.encode(None):
             output_container.mux(packet)
+            
         output_container.close()
         container.close()
 

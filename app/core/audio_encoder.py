@@ -26,9 +26,12 @@ class AudioEncoder:
             
             # 添加 Opus 编码流 (libopus)
             stream = output_container.add_stream('libopus', rate=self.sample_rate)
-            stream.bitrate = int(self.bitrate[:-1]) * 1000
-            stream.channels = self.channels
-            stream.layout = 'mono' if self.channels == 1 else 'stereo'
+            
+            # 使用更健壮的方式设置比特率和声道布局
+            bitrate_val = int(self.bitrate.replace('k', '')) * 1000
+            stream.codec_context.bit_rate = bitrate_val
+            stream.codec_context.layout = 'mono' if self.channels == 1 else 'stereo'
+            stream.codec_context.sample_rate = self.sample_rate
             
             # 将 int16 字节流转换为 numpy 数组并注入 av.AudioFrame
             data = np.frombuffer(pcm, dtype=np.int16).reshape(1, -1)
@@ -60,8 +63,11 @@ class AudioEncoder:
         try:
             output_container = av.open(output_buf, mode='w', format='ogg')
             stream = output_container.add_stream('libopus', rate=self.sample_rate)
-            stream.bitrate = int(self.bitrate[:-1]) * 1000
-            stream.channels = self.channels
+            
+            bitrate_val = int(self.bitrate.replace('k', '')) * 1000
+            stream.codec_context.bit_rate = bitrate_val
+            stream.codec_context.layout = 'mono' if self.channels == 1 else 'stereo'
+            stream.codec_context.sample_rate = self.sample_rate
             
             pointer = 0
             for pcm in pcm_chunks:

@@ -1,0 +1,123 @@
+import uuid
+import logging
+import asyncio
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel import select
+from app.db.engine import VoiceProfile, User, get_session
+from app.auth.manager import fastapi_users
+from app.core.slot_manager import SlotManager
+from app.core.worker_pool import WorkerPool, InferenceTask
+from app.core.audio_encoder import AudioEncoder
+from app.inference.text_splitter import TextSplitter
+from app.core.shm_manager import shm_manager
+
+logger = logging.getLogger("FastVox")
+router = APIRouter(prefix="/tts", tags=["TTS Synthesis"])
+
+# 单例服务容器 (由 main.py 初始化)
+class TTSServiceContainer:
+    slot_manager: Optional[SlotManager] = None
+    worker_pool: Optional[WorkerPool] = None
+
+container = TTSServiceContainer()
+
+@router.websocket("/stream")
+async def tts_stream(
+    websocket: WebSocket,
+    token: str = Query(...),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    WebSocket 实时流式合成接口
+    """
+    # 1. 认证
+    from app.auth.manager import auth_backend
+    strategy = auth_backend.get_strategy()
+    user = await strategy.read_token(token, fastapi_users.get_user_manager())
+    if not user or not user.is_active:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    
+    request_id = uuid.uuid4().hex[:8]
+    slot_id = -1
+    
+    try:
+        # 接收参数
+        data = await websocket.receive_json()
+        target_text = data.get("text", "").strip()
+        voice_id = data.get("voice_id")
+        speed = float(data.get("speed", 1.0))
+        
+        if not target_text:
+            await websocket.send_json({"error": "empty_text"})
+            return
+
+        # 获取声纹上下文
+        prompt_audio, prompt_text = None, None
+        if voice_id:
+            profile_id = uuid.UUID(voice_id)
+            statement = select(VoiceProfile).where(VoiceProfile.id == profile_id, VoiceProfile.user_id == user.id)
+            result = await session.execute(statement)
+            profile = result.scalar_one_or_none()
+            if profile:
+                prompt_audio = profile.audio_path
+                prompt_text = profile.prompt_text
+
+        # 获取 Slot
+        slot_id = await container.slot_manager.acquire(request_id)
+        
+        # 文本分片
+        splitter = TextSplitter()
+        segments = splitter.split(target_text)
+        
+        encoder = AudioEncoder()
+        
+        for i, segment in enumerate(segments):
+            task = InferenceTask(
+                task_id=f"{request_id}_{i}",
+                slot_id=slot_id,
+                text=segment,
+                prompt_audio_path=prompt_audio,
+                prompt_text=prompt_text,
+                speed=speed
+            )
+            
+            # 提交任务
+            await container.slot_manager.submit_task(slot_id, task)
+            
+            # 等待推理就绪
+            ready = await container.slot_manager.wait_for_ready(slot_id, timeout=30.0)
+            if not ready:
+                await websocket.send_json({"error": "inference_timeout"})
+                break
+                
+            # 从 SHM 读取 PCM 数据 (由于目前没有记录确切 size，暂读全量或由 Worker 标记)
+            # 注意：实际生产中需要从 UDS 信令中转发确切的 size
+            pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=2*1024*1024)
+            
+            # 编码 Ogg/Opus
+            opus_chunks = encoder.encode_opus_streaming([pcm_data])
+            for chunk in opus_chunks:
+                await websocket.send_bytes(chunk)
+                
+        # 结束信号 (空分片)
+        await websocket.send_bytes(b"")
+
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected: {request_id}")
+    except Exception as e:
+        logger.error(f"TTS Stream Error: {e}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+    finally:
+        if slot_id != -1:
+            container.slot_manager.release(slot_id)
+        try:
+            await websocket.close()
+        except:
+            pass

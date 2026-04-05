@@ -1,0 +1,63 @@
+/* 飞书 (Feishu/Lark) 极简设计规范变量 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+:root {
+  /* 品牌色 - 飞书蓝 */
+  --color-primary: #3370FF;
+  --color-primary-hover: #2860E1;
+  --color-primary-active: #1F4FBF;
+  --color-primary-light: #E1EAFF;
+  
+  /* 功能色 */
+  --color-success: #34C724;
+  --color-warning: #FF7D00;
+  --color-danger: #F53F3F;
+  
+  /* 背景层次 */
+  --color-bg-page: #F5F6F7;      /* 极简灰底 */
+  --color-bg-card: #FFFFFF;      /* 纯白卡片 */
+  --color-border: #E5E6EB;       /* 细边框 */
+  
+  /* 文字 */
+  --color-text-primary: #1F2329;   /* 标题及主要内容 */
+  --color-text-secondary: #646A73; /* 辅助、次要 */
+  --color-text-disabled: #C9CDD4;
+  
+  /* 字体字重对比 (设计灵魂) */
+  --font-family-base: 'Inter', 'Noto Sans SC', sans-serif;
+  --font-weight-light: 300;     /* 辅助标签 */
+  --font-weight-regular: 400;   /* 正文 */
+  --font-weight-medium: 500;    /* 按钮或强调内容 */
+  --font-weight-semibold: 600;  /* 区块标题 */
+  --font-weight-bold: 700;      /* 大标题 */
+  
+  /* 间距与圆角 */
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(17, 31, 44, 0.08); /* 飞书风格轻盈阴影 */
+  
+  /* 动效 */
+  --transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 全局基础样式 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-base);
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-weight: var(--font-weight-bold); }
+button, input, textarea { font-family: inherit; }
+
+/* 响应式基础 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #cfd3d8; border-radius: 10px; }

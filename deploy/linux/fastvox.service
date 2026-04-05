@@ -1,0 +1,23 @@
+[Unit]
+Description=FastVox High Performance TTS Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# 自动创建 UDS 目录
+RuntimeDirectory=fastvox
+RuntimeDirectoryMode=0755
+# 工作目录
+WorkingDirectory=/app/FastVox
+# 启动前清理残余 SHM
+ExecStartPre=/bin/bash /app/FastVox/scripts/cleanup_shm.sh
+# 启动命令
+ExecStart=/app/FastVox/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 优雅退出
+KillSignal=SIGTERM
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

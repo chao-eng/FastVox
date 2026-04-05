@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  fastvox:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    container_name: fastvox-server
+    # 核心配置: 必须与宿主机共享 IPC 以支持 multiprocessing.shared_memory
+    ipc: host
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      - FASTVOX_DEBUG=False
+      - FASTVOX_JWT_SECRET=production-secret-replace-me
+    restart: always

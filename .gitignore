@@ -1,4 +1,4 @@
-# Editor directories and files
+# IDE & OS
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -10,4 +10,62 @@
 *.sw?
 *.swo
 *~
+node_modules
+dist
+env
 
+# --- FastVox Specific Assets ---
+# Persistent Data (SQLite, Recordings)
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+data/voices/*.wav
+
+# ML Models (Large ONNX Files)
+models/zipvoice/*
+!models/zipvoice/.gitkeep
+
+# Logs & Temp
+logs/
+/tmp/fastvox/
+
+# --- Python Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env
+
+# --- Vue3 Frontend (Web) ---
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/*.local
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/pnpm-debug.log*
+
+# --- Deployment ---
+deploy/docker/data/
+deploy/docker/models/

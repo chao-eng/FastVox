@@ -2,14 +2,17 @@ import asyncio
 import logging
 import psutil
 import os
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
-from sqlmodel import select
+from fastapi import FastAPI, Depends, HTTPException
+from sqlmodel import select, Session
 from sqlalchemy import func
+from pydantic import BaseModel, EmailStr
 
 from config.settings import get_settings
-from app.db.engine import init_db, UsageLog, User, VoiceProfile
-from app.auth.manager import fastapi_users, auth_backend, current_superuser
+from app.db.engine import init_db, engine, User, VoiceProfile
+from app.auth.manager import fastapi_users, auth_backend, current_superuser, UserManager, get_user_db
+from app.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.core.shm_manager import shm_manager
 from app.core.worker_pool import WorkerPool
 from app.core.slot_manager import SlotManager
@@ -27,59 +30,43 @@ worker_pool = WorkerPool()
 slot_manager = SlotManager(worker_pool)
 uds_server = UDSServer(settings.uds_gateway_addr)
 
+# --- 定义初始化专用输入模型 ---
+class InitialSetupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+# --- 生命周期管理 ---
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- 启动阶段 ---
     logger.info("Initializing FastVox Services...")
-    
-    # 1. 初始化数据库
     await init_db()
-    
-    # 2. 初始化共享内存
     shm_manager.create()
     
-    # 3. 启动 UDSServer 并将 SlotManager 与之绑定
-    # 当 UDS 接收到 Ready 信号时，调用 SlotManager.mark_ready 唤醒等待协程
     sock = uds_server.start()
-    
-    # 定义异步 UDS 阅读器
     async def uds_reader():
         loop = asyncio.get_event_loop()
         while True:
             try:
-                # 获取定长信令 (16字节)
                 data = await loop.sock_recv(sock, 16)
                 import struct
                 slot_id, offset, size, status = struct.unpack('IIII', data)
-                # 状态处理
-                if status == 2: # READY
-                    slot_manager.mark_ready(slot_id)
-                elif status == 3: # ERROR
-                    slot_manager.mark_ready(slot_id) # 唤醒以显示错误
-            except Exception as e:
-                logger.debug(f"UDS reader loop stop or error: {e}")
-                break
+                if status == 2: slot_manager.mark_ready(slot_id)
+                elif status == 3: slot_manager.mark_ready(slot_id)
+            except: break
 
-    # 4. 启动 Worker 进程池
     worker_pool.start()
-    
-    # 5. 启动后台任务 (UDS 阅读器 + Slot 看门狗)
     asyncio.create_task(uds_reader())
     asyncio.create_task(slot_manager.watchdog())
-
-    # 关联单例到 API 容器
     container.slot_manager = slot_manager
     container.worker_pool = worker_pool
-
-    logger.info("FastVox is ready for inference.")
-
+    logger.info("FastVox is ready.")
     yield
-    
-    # --- 关闭阶段 ---
-    logger.info("Shutdown initiated. Cleaning up...")
     worker_pool.stop()
     uds_server.stop()
     shm_manager.destroy()
+
+# --- 实例化 App ---
 
 app = FastAPI(
     title=settings.app_name, 
@@ -88,38 +75,51 @@ app = FastAPI(
     debug=settings.debug
 )
 
-# 挂载核心路由
-app.include_router(
-    fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["Auth"]
-)
-app.include_router(
-    fastapi_users.get_register_router(User, User), prefix="/auth", tags=["Auth"]
-)
+# --- 初始化引导接口 (Setup Wizard) ---
+
+@app.get("/api/v1/auth/setup-status", tags=["Auth"])
+async def get_setup_status():
+    from sqlmodel.ext.asyncio.session import AsyncSession
+    async with AsyncSession(engine) as session:
+        # 使用推荐的 exec() 语法
+        result = await session.exec(select(User))
+        exists = result.first() is not None
+        return {"need_setup": not exists}
+
+@app.post("/api/v1/auth/initial-setup", tags=["Auth"])
+async def initial_setup(req: InitialSetupRequest):
+    from sqlmodel.ext.asyncio.session import AsyncSession
+    async with AsyncSession(engine) as session:
+        # 1. 确认是否已有用户
+        result = await session.exec(select(User))
+        if result.first() is not None:
+            raise HTTPException(status_code=400, detail="Already initialized")
+        
+        # 2. 手动创建数据库适配器和管理器 (因为我们已经有了 session)
+        from fastapi_users.db import SQLAlchemyUserDatabase
+        user_db = SQLAlchemyUserDatabase(session, User)
+        user_manager = UserManager(user_db)
+        
+        user_create = UserCreate(
+            email=req.email,
+            password=req.password,
+            is_active=True,
+            is_superuser=True,
+            is_verified=True
+        )
+        user = await user_manager.create(user_create)
+        return {"status": "success", "user_id": str(user.id)}
+
+# --- 挂载业务路由 ---
+
+app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/v1/auth/jwt", tags=["Auth"])
+app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(voice_router, prefix="/api/v1")
 app.include_router(tts_router, prefix="/api/v1")
-
-# --- 监控与健康检查 T17 ---
 
 @app.get("/health", tags=["Monitoring"])
 async def health_check():
     return {"status": "ok", "workers": worker_pool.health_check()}
-
-@app.get("/api/v1/health/detail", tags=["Monitoring"])
-async def health_detail(user: User = Depends(current_superuser)):
-    """详细系统指标 (仅限管理员)"""
-    process = psutil.Process(os.getpid())
-    
-    return {
-        "status": "healthy",
-        "platform": os.name,
-        "uptime_seconds": time.time() - process.create_time(),
-        "memory_rss_mb": process.memory_info().rss / 1024 / 1024,
-        "workers": worker_pool.health_check(),
-        "slots": {
-            "total": settings.slot_count,
-            "in_use": settings.slot_count - len(slot_manager._free_slots)
-        }
-    }
 
 if __name__ == "__main__":
     import uvicorn

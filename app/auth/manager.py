@@ -25,6 +25,12 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = settings.jwt_secret
     verification_token_secret = settings.jwt_secret
 
+    def parse_id(self, value: str) -> uuid.UUID:
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            return None
+
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"User {user.id} has registered.")
 

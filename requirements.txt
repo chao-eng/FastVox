@@ -1,10 +1,10 @@
 fastapi==0.110.0
 uvicorn[standard]==0.29.0
-sherpa-onnx==1.10.15
+sherpa-onnx==1.12.35
 sqlmodel==0.0.16
 aiosqlite==0.20.0
 fastapi-users[sqlalchemy]==13.0.0
-PyAV==12.0.0
+av>=12.0.0
 pydantic-settings==2.2.0
 httpx==0.27.0
 python-multipart==0.0.9

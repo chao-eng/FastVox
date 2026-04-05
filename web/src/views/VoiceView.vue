@@ -102,7 +102,7 @@ const handleUpload = () => {
   padding: 20px; transition: var(--transition); display: flex; flex-direction: column;
 }
 
-.voice-card:hover { transform: translateY(-4px); shadow: var(--shadow-md); border-color: var(--color-primary); }
+.voice-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: var(--color-primary); }
 
 .card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .icon-box { 
@@ -114,7 +114,7 @@ const handleUpload = () => {
 .duration { font-size: 12px; color: var(--color-text-secondary); font-weight: var(--font-weight-light); }
 
 .text-hint { font-size: 11px; color: var(--color-text-disabled); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
-.prompt-text { font-size: 13px; line-height: 1.5; height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--color-text-secondary); }
+.prompt-text { font-size: 13px; line-height: 1.5; height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; color: var(--color-text-secondary); }
 
 .card-footer { margin-top: auto; padding-top: 16px; border-top: 1px dashed var(--color-border); display: flex; justify-content: space-between; align-items: center; }
 .meta { font-size: 12px; color: var(--color-text-disabled); display: flex; align-items: center; gap: 4px; }

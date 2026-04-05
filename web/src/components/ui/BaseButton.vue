@@ -18,7 +18,7 @@ const classes = computed(() => [
   'btn',
   `btn-${props.type}`,
   `btn-s-${props.size}`,
-  { 'is-loading': props.loading, 'is-disabled': props.disabled }
+  { 'is-loading': props.loading, 'is-disabled': props.disabled || props.loading }
 ]);
 </script>
 

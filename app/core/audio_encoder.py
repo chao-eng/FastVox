@@ -22,7 +22,7 @@ class AudioEncoder:
         output_buf = io.BytesIO()
         try:
             # 打开内存容器
-            output_container = av.open(output_buf, mode='w', format='ogg')
+            output_container = av.open(output_buf, mode='w', format='webm')
             
             # 添加 Opus 编码流 (libopus)
             stream = output_container.add_stream('libopus', rate=self.sample_rate)
@@ -56,12 +56,17 @@ class AudioEncoder:
             logger.error(f"Sync audio encoding failed: {e}")
             return b""
 
-    def encode_opus_streaming(self, pcm_chunks: Iterator[bytes]) -> Iterator[bytes]:
-        """生成器模式: 接收 PCM 分片流，产生 Ogg/Opus 容器分片流"""
+    def encode_opus_streaming(self, pcm_iterator: Iterator[bytes]) -> Iterator[bytes]:
+        """
+        持久化流式编码: 接受一个 PCM 字节流迭代器，产生单一 Ogg 容器的字节流。
+        确保整个过程只有一个 Ogg Header。
+        """
         output_buf = io.BytesIO()
+        pointer = 0
         
         try:
-            output_container = av.open(output_buf, mode='w', format='ogg')
+            # 1. 初始化容器与流 (一次性)
+            output_container = av.open(output_buf, mode='w', format='webm')
             stream = output_container.add_stream('libopus', rate=self.sample_rate)
             
             bitrate_val = int(self.bitrate.replace('k', '')) * 1000
@@ -69,8 +74,8 @@ class AudioEncoder:
             stream.codec_context.layout = 'mono' if self.channels == 1 else 'stereo'
             stream.codec_context.sample_rate = self.sample_rate
             
-            pointer = 0
-            for pcm in pcm_chunks:
+            # 2. 迭代处理分片
+            for pcm in pcm_iterator:
                 if not pcm: continue
                 
                 # 构造 frame
@@ -78,26 +83,78 @@ class AudioEncoder:
                 frame = av.AudioFrame.from_ndarray(data, format='s16', layout='mono')
                 frame.sample_rate = self.sample_rate
                 
-                # 编码
+                # 编码并混流
                 for packet in stream.encode(frame):
                     output_container.mux(packet)
                 
-                # 读取新增的容器字节
+                # 读取并返回新增的字节块
                 res = output_buf.getvalue()
                 chunk = res[pointer:]
                 pointer = len(res)
                 if chunk:
                     yield chunk
             
-            # 最后一个分片
+            # 3. 结束编码 (Flush)
             for packet in stream.encode(None):
                 output_container.mux(packet)
             
             output_container.close()
+            
+            # 返回最后的字节 (包括 Ogg Footer)
             res = output_buf.getvalue()
             chunk = res[pointer:]
             if chunk:
                 yield chunk
                 
         except Exception as e:
-            logger.error(f"Streaming audio encoding failed: {e}")
+            logger.error(f"Stateful streaming audio encoding failed: {e}")
+
+class StreamingEncoder:
+    """有状态的流式编码器，适合在异步循环中分段调用"""
+    def __init__(self, sample_rate: int = 24000, channels: int = 1):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.output_buf = io.BytesIO()
+        self.pointer = 0
+        
+        # 初始化 PyAV 容器
+        self.container = av.open(self.output_buf, mode='w', format='webm')
+        self.stream = self.container.add_stream('libopus', rate=self.sample_rate)
+        self.stream.codec_context.bit_rate = 64000
+        self.stream.codec_context.layout = 'mono' if channels == 1 else 'stereo'
+        self.stream.codec_context.sample_rate = sample_rate
+
+    def encode_chunk(self, pcm: bytes) -> bytes:
+        """编码一个 PCM 分片并返回当前新增的容器字节"""
+        if not pcm: return b""
+        
+        try:
+            data = np.frombuffer(pcm, dtype=np.int16).reshape(1, -1)
+            frame = av.AudioFrame.from_ndarray(data, format='s16', layout='mono' if self.channels == 1 else 'stereo')
+            frame.sample_rate = self.sample_rate
+            
+            for packet in self.stream.encode(frame):
+                self.container.mux(packet)
+            
+            res = self.output_buf.getvalue()
+            chunk = res[self.pointer:]
+            self.pointer = len(res)
+            return chunk
+        except Exception as e:
+            logger.error(f"StreamingEncoder chunk encoding failed: {e}")
+            return b""
+
+    def close(self) -> bytes:
+        """关闭容器并返回最后的 Footer 字节"""
+        try:
+            for packet in self.stream.encode(None):
+                self.container.mux(packet)
+            self.container.close()
+            
+            res = self.output_buf.getvalue()
+            chunk = res[self.pointer:]
+            self.pointer = len(res)
+            return chunk
+        except Exception as e:
+            logger.error(f"StreamingEncoder close failed: {e}")
+            return b""

@@ -110,7 +110,8 @@ class TTSEngine:
                   text: str, 
                   speed: float = 1.0,
                   prompt_audio: Optional[str] = None, 
-                  prompt_text: Optional[str] = None
+                  prompt_text: Optional[str] = None,
+                  prompt_samples: Optional[bytes] = None # 新增：支持直接传入 PCM 字节流作为 Prompt
                   ) -> Tuple[bytes, int]:
         """
         进行流匹配语音合成 (Zero-shot Voice Cloning)
@@ -127,29 +128,39 @@ class TTSEngine:
 
         try:
             # 执行推理 (同步阻塞调用)
-            # 对于 ZipVoice，必须提供参考音色信息
-            if prompt_audio and prompt_text:
-                # 1. 使用 PyAV 读取参考音频并转换为 float32 NPCM
-                prompt_container = av.open(prompt_audio)
-                prompt_samples = []
-                for frame in prompt_container.decode(audio=0):
-                    s = frame.to_ndarray().flatten().astype(np.float32)
-                    if frame.format.name == 's16':
-                        s = s / 32768.0
-                    prompt_samples.extend(s)
-                prompt_container.close()
+            # 对于 ZipVoice，必须提供参考音色信息 (可以是文件路径，也可以是上一段生成的采样)
+            if (prompt_audio or prompt_samples) and prompt_text:
+                final_prompt_samples = []
+                
+                # 优先使用实时传入的采样 (Segment Context)
+                if prompt_samples:
+                    # 将 int16 字节流转换为 float32 常规采样，使用与生成端对称的量化系数 (32767)
+                    final_prompt_samples = np.frombuffer(prompt_samples, dtype=np.int16).astype(np.float32) / 32767.0
+                    # 裁剪限幅，防止计算过程中的溢出
+                    final_prompt_samples = np.clip(final_prompt_samples, -1.0, 1.0)
+                    logger.debug(f"Using {len(final_prompt_samples)} samples for context prompt (Normalization: 32767)")
+                
+                # 其次使用文件路径 (Profile Mode)
+                elif prompt_audio:
+                    prompt_container = av.open(prompt_audio)
+                    for frame in prompt_container.decode(audio=0):
+                        s = frame.to_ndarray().flatten().astype(np.float32)
+                        if frame.format.name == 's16':
+                            s = s / 32768.0
+                        final_prompt_samples.extend(s)
+                    prompt_container.close()
 
-                # 2. 调用符合 ZipVoice 签名的 generate 方法
+                # 调用符合 ZipVoice 签名的 generate 方法
                 audio = self.tts.generate(
                     text=text,
                     prompt_text=prompt_text,
-                    prompt_samples=prompt_samples,
+                    prompt_samples=final_prompt_samples,
                     sample_rate=24000, 
                     speed=speed,
                     num_steps=self.num_steps
                 )
             else:
-                raise TTSInferenceError("ZipVoice requires prompt_audio and prompt_text")
+                raise TTSInferenceError("ZipVoice requires prompt_audio/samples and prompt_text")
 
             # 将 float 格式的 audio samples 转换为 int16 PCM (mono)
             pcm = (np.array(audio.samples) * 32767).astype(np.int16)

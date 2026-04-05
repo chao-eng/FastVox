@@ -24,7 +24,7 @@ class SlotManager:
     使用 asyncio.Semaphore 限制物理并发 (SLOT_COUNT)
     """
     
-    SLOT_TTL = 120 # 秒，单个 Slot 推理最大时长 (增加到 120s 以适应长假和 CPU 推理)
+    SLOT_TTL = 180 # 秒，单段分片推理最大时长 (增加到 180s 以适应 CPU 慢速推理)
     
     def __init__(self, worker_pool: WorkerPool):
         self._worker_pool = worker_pool
@@ -91,7 +91,10 @@ class SlotManager:
         logger.info(f"Slot {slot_id} released from request {request_id}")
 
     async def submit_task(self, slot_id: int, task: InferenceTask):
-        """将任务发放给 Worker"""
+        """将任务发放给 Worker，并在下发新任务时刷新计时器"""
+        if slot_id in self._slots:
+            self._slots[slot_id].acquired_at = time.time()
+            
         # 这里由 SlotManager 充当任务分发中专，保证任务与 slot_id 绑定
         task.slot_id = slot_id
         self._worker_pool.submit_task(task)

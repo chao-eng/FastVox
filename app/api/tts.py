@@ -9,7 +9,7 @@ from app.db.engine import VoiceProfile, User, get_session
 from app.auth.manager import fastapi_users, get_user_manager, UserManager, auth_backend
 from app.core.slot_manager import SlotManager
 from app.core.worker_pool import WorkerPool, InferenceTask
-from app.core.audio_encoder import AudioEncoder
+from app.core.audio_encoder import AudioEncoder, StreamingEncoder
 from app.inference.text_splitter import TextSplitter
 from app.core.shm_manager import shm_manager
 
@@ -77,8 +77,15 @@ async def tts_stream(
         splitter = TextSplitter(max_length=150)
         segments = splitter.split(target_text)
         
-        encoder = AudioEncoder()
+        # 初始化有状态的流式编码器 (单会话单容器)
+        encoder = StreamingEncoder(sample_rate=24000)
         
+        # 初始化语境变量 (用于多分片间的平滑衔接)
+        # 第一段默认使用用户上传的静态声纹配置
+        current_prompt_audio_path = prompt_audio
+        current_prompt_text = prompt_text
+        current_prompt_audio_samples = None
+
         for i, segment in enumerate(segments):
             # ！！！关键：在开始该分片的推理排队前，重置 slot 的 ready 状态
             app_slot_manager.reset_event(slot_id)
@@ -87,8 +94,9 @@ async def tts_stream(
                 task_id=f"{request_id}_{i}",
                 slot_id=slot_id,
                 text=segment,
-                prompt_audio_path=prompt_audio,
-                prompt_text=prompt_text,
+                prompt_audio_path=current_prompt_audio_path,
+                prompt_text=current_prompt_text,
+                prompt_audio_samples=current_prompt_audio_samples,
                 speed=speed
             )
             
@@ -96,8 +104,8 @@ async def tts_stream(
             logger.info(f"Submitting task {task.task_id} to queue (Slot: {slot_id})")
             await app_slot_manager.submit_task(slot_id, task)
             
-            # 等待推理就绪 (增加超时到 90s)
-            ready = await app_slot_manager.wait_for_ready(slot_id, timeout=90.0)
+            # 等待推理就绪 (增加超时到 120s)
+            ready = await app_slot_manager.wait_for_ready(slot_id, timeout=120.0)
             if not ready:
                 await websocket.send_json({"error": "推理任务超时"})
                 break
@@ -110,11 +118,24 @@ async def tts_stream(
 
             pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=data_size)
             
-            # 编码 Ogg/Opus
-            opus_chunks = encoder.encode_opus_streaming([pcm_data])
-            for chunk in opus_chunks:
+            # 使用有状态编码器进行 Opus 编码 (持续追加到同一个 Ogg 容器)
+            chunk = encoder.encode_chunk(pcm_data)
+            if chunk:
                 await websocket.send_bytes(chunk)
                 
+            # --- 语境更新逻辑 (上下文衔接的核心) ---
+            # 下一段生成的 Prompt 文本即为当前段落的文本
+            current_prompt_text = segment
+            # 下一段生成的 Prompt 音频即为当前段落生成的音频 (保持 1:1 对齐以防止推理混乱)
+            current_prompt_audio_samples = pcm_data
+            # 有了实时采样语境后，不再需要之前的静态声纹路径
+            current_prompt_audio_path = None
+                
+        # 结束编码并发送 Ogg Footer
+        footer = encoder.close()
+        if footer:
+            await websocket.send_bytes(footer)
+
         # 结束信号 (空分片)
         await websocket.send_bytes(b"")
 

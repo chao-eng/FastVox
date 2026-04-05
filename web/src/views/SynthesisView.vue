@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Play, Download, Mic, Trash2, Send } from 'lucide-vue-next';
 import BaseButton from '../components/ui/BaseButton.vue';
 import client from '../api/client';
@@ -10,6 +10,11 @@ const speed = ref(1.0);
 const isSynthesizing = ref(false);
 const audioUrl = ref<string | null>(null);
 const voices = ref<any[]>([]);
+
+// 流式播放管理器
+let mediaSource: MediaSource | null = null;
+let sourceBuffer: SourceBuffer | null = null;
+let audioChunkQueue: Uint8Array[] = [];
 
 const maxTextLength = 500;
 const textLength = computed(() => text.value.length);
@@ -22,16 +27,40 @@ const fetchVoices = async () => {
 
 const handleSynthesize = () => {
   if (!text.value || !voiceId.value) return;
+  
+  // 1. 初始化状态
   isSynthesizing.value = true;
+  if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
   audioUrl.value = null;
+  
+  const audioChunks: Uint8Array[] = [];
+  audioChunkQueue = [];
 
-  // 获取后端端口，建立 WebSocket 连接
+  // 2. 初始化 MediaSource (MSE) 实现边下边播
+  mediaSource = new MediaSource();
+  audioUrl.value = URL.createObjectURL(mediaSource);
+
+  mediaSource.addEventListener('sourceopen', () => {
+    if (!mediaSource) return;
+    try {
+      sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
+      sourceBuffer.addEventListener('updateend', () => {
+        // 当 Buffer 更新完成后，处理队列中的剩余数据
+        if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
+          const nextChunk = audioChunkQueue.shift()!;
+          sourceBuffer.appendBuffer(nextChunk.buffer as ArrayBuffer);
+        }
+      });
+    } catch (e) {
+      console.warn("MSE not supported for audio/ogg, falling back to Blob mode.", e);
+    }
+  });
+
+  // 3. 建立 WebSocket 连接
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws?token=${localStorage.getItem('fastvox_token')}`;
-  
   const socket = new WebSocket(wsUrl);
   socket.binaryType = 'arraybuffer';
-  const audioChunks: Uint8Array[] = [];
 
   socket.onopen = () => {
     socket.send(JSON.stringify({
@@ -44,19 +73,42 @@ const handleSynthesize = () => {
   socket.onmessage = (event) => {
     if (event.data instanceof ArrayBuffer) {
       if (event.data.byteLength === 0) {
-        // 结束帧
         socket.close();
+        return;
+      }
+
+      const chunk = new Uint8Array(event.data);
+      audioChunks.push(chunk);
+
+      // 将分片送入 MSE Buffer
+      if (sourceBuffer && !sourceBuffer.updating && audioChunkQueue.length === 0) {
+        sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
       } else {
-        audioChunks.push(new Uint8Array(event.data));
+        audioChunkQueue.push(chunk);
       }
     }
   };
 
   socket.onclose = () => {
     isSynthesizing.value = false;
+    
+    // 告知 MediaSource 数据已传完
+    if (mediaSource && mediaSource.readyState === 'open') {
+      // 延迟关闭，确保排队中的 Buffer 处理完
+      setTimeout(() => {
+        if (mediaSource && mediaSource.readyState === 'open') {
+          mediaSource.endOfStream();
+        }
+      }, 500);
+    }
+
+    // 依然保留一个完整的 Blob 供后续“下载”使用
     if (audioChunks.length > 0) {
-      const blob = new Blob(audioChunks as any, { type: 'audio/ogg' });
-      audioUrl.value = URL.createObjectURL(blob);
+      const fullBlob = new Blob(audioChunks as any, { type: 'audio/webm' });
+      // 只有在不支持 MSE 或者需要持久化 URL 时才替换
+      // 这里我们为了保持进度条能正常 seek，合成完后将 URL 替换为完整 Blob
+      if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
+      audioUrl.value = URL.createObjectURL(fullBlob);
     }
   };
 
@@ -70,7 +122,7 @@ const downloadAudio = () => {
   if (!audioUrl.value) return;
   const link = document.createElement('a');
   link.href = audioUrl.value;
-  link.download = `fastvox_${Date.now()}.ogg`;
+  link.download = `fastvox_${Date.now()}.webm`;
   link.click();
 };
 
@@ -125,15 +177,14 @@ onMounted(fetchVoices);
             <p>等待任务提交...</p>
           </div>
           
-          <div v-if="isSynthesizing" class="skeleton">
-            <div class="skeleton-wave"></div>
-            <p>正在执行流式推理...</p>
-          </div>
-
-          <div v-if="audioUrl && !isSynthesizing" class="player">
+          <div v-if="audioUrl" class="player">
+            <div v-if="isSynthesizing" class="streaming-indicator">
+              <div class="dot-flashing"></div>
+              <span>流式合成中，可即时播放...</span>
+            </div>
             <audio controls :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
             <div class="player-actions">
-              <BaseButton type="secondary" size="md" @click="downloadAudio">
+              <BaseButton type="secondary" size="md" :disabled="isSynthesizing" @click="downloadAudio">
                 <Download :size="18" /> 保存录音
               </BaseButton>
             </div>
@@ -169,4 +220,11 @@ onMounted(fetchVoices);
 @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }
 .player { width: 100%; }
 .player-actions { display: flex; gap: 12px; justify-content: center; align-items: center; }
+
+.streaming-indicator { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; color: var(--color-primary); font-size: 13px; font-weight: 500; }
+.dot-flashing { position: relative; width: 6px; height: 6px; border-radius: 5px; background-color: var(--color-primary); color: var(--color-primary); animation: dot-flashing 1s infinite linear alternate; animation-delay: 0.5s; }
+.dot-flashing::before, .dot-flashing::after { content: ""; display: inline-block; position: absolute; top: 0; width: 6px; height: 6px; border-radius: 5px; background-color: var(--color-primary); color: var(--color-primary); animation: dot-flashing 1s infinite linear alternate; }
+.dot-flashing::before { left: -10px; animation-delay: 0s; }
+.dot-flashing::after { left: 10px; animation-delay: 1s; }
+@keyframes dot-flashing { 0% { background-color: var(--color-primary); } 50%, 100% { background-color: #E1EAFF; } }
 </style>

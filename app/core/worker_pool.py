@@ -18,6 +18,7 @@ class InferenceTask:
     text: str
     prompt_audio_path: Optional[str] = None
     prompt_text: Optional[str] = None
+    prompt_audio_samples: Optional[bytes] = None # 新增：支持直接传递 PCM 字节作为前文 Prompt
     speed: float = 1.0
 
 def worker_main(
@@ -71,7 +72,8 @@ def worker_main(
                     text=task.text,
                     speed=task.speed,
                     prompt_audio=task.prompt_audio_path,
-                    prompt_text=task.prompt_text
+                    prompt_text=task.prompt_text,
+                    prompt_samples=task.prompt_audio_samples # 传递上一段的音频语境
                 )
                 
                 # 将 PCM 写入共享内存 Slot

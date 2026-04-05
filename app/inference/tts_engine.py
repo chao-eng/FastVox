@@ -40,14 +40,13 @@ class TTSEngine:
             # 构造配置
             tts_config = sherpa_onnx.OfflineTtsConfig(
                 model=sherpa_onnx.OfflineTtsModelConfig(
-                    zipvoice=sherpa_onnx.OfflineTtsZipVoiceModelConfig(
-                        encoder=os.path.join(self.model_dir, "encoder.onnx"),
-                        decoder=os.path.join(self.model_dir, "decoder.onnx"),
+                    zipvoice=sherpa_onnx.OfflineTtsZipvoiceModelConfig(
+                        encoder=os.path.join(self.model_dir, "encoder.int8.onnx"),
+                        decoder=os.path.join(self.model_dir, "decoder.int8.onnx"),
                         vocoder=os.path.join(self.model_dir, "vocos_24khz.onnx"),
                         tokens=os.path.join(self.model_dir, "tokens.txt"),
                         lexicon=os.path.join(self.model_dir, "lexicon.txt"),
                         data_dir=os.path.join(self.model_dir, "espeak-ng-data"),
-                        num_steps=self.num_steps, # distill 步数 (如 4, 8)
                     ),
                     num_threads=self.num_threads,
                     debug=False,

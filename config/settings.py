@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="FASTVOX_",
         env_file=".env",
-        extra="ignore"
+        extra="ignore",
+        protected_namespaces=()
     )
 
 @lru_cache()

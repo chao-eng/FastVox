@@ -16,16 +16,19 @@ class PlatformConfig:
         # 共享内存名前缀
         self.shm_prefix = "fastvox_"
         
-        # UDS 路径
+        # UDS / 网络信令配置
+        self.use_udp_signaling = False
+        self.signal_port = 12000 # 仅用于 Windows 回退
+        
         if self.platform == "darwin":
             self.uds_dir = "/tmp/fastvox/"
             self.process_start_method = "spawn"
             self.recommended_workers = 2
         elif self.platform == "win32":
-            # Windows 的 UDS 目前支持 10 1809+，可以使用 local 临时目录
             self.uds_dir = os.path.join(os.environ.get("TEMP", r"C:\data\fastvox"), "fastvox")
             self.process_start_method = "spawn"
             self.recommended_workers = min(cpu_count() or 2, 4)
+            self.use_udp_signaling = True # Windows 强制使用 UDP Loopback 回退
         else: # Linux
             self.uds_dir = "/run/fastvox/"
             self.process_start_method = "forkserver"

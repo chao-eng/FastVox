@@ -1,6 +1,7 @@
 import uuid
 import logging
 import asyncio
+from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select

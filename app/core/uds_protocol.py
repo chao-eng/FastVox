@@ -58,7 +58,12 @@ class UDSServer:
             if platform.platform != "win32":
                 os.chmod(self.uds_path, 0o777)
             logger.info(f"SignalServer (UDS) listening on {self.uds_path}")
-
+        
+        # 优化缓冲区及非阻塞设置
+        try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 1024) # 1MB 缓冲
+        except:
+            pass
         self.sock.setblocking(False)
         return self.sock
 
@@ -90,12 +95,16 @@ class UDSClient:
              self.sock = socket.socket(_AF_UNIX, socket.SOCK_DGRAM)
 
     def send_signal(self, slot_id: int, offset: int, size: int, status: int):
-        """发送定长信令"""
-        try:
-            packet = struct.pack(SIGNAL_FORMAT, slot_id, offset, size, status)
-            self.sock.sendto(packet, self.gateway_addr)
-        except Exception as e:
-            logger.error(f"Worker failed to send signal: {e}")
+        """发送定长信令 (带重试机制)"""
+        packet = struct.pack(SIGNAL_FORMAT, slot_id, offset, size, status)
+        # 对于关键信号 (READY/ERROR)，尝试发送两次以应对 UDP 丢包
+        tries = 2 if status in (SignalStatus.READY, SignalStatus.ERROR) else 1
+        
+        for _ in range(tries):
+            try:
+                self.sock.sendto(packet, self.gateway_addr)
+            except Exception as e:
+                logger.error(f"Worker failed to send signal: {e}")
 
     def close(self):
         self.sock.close()

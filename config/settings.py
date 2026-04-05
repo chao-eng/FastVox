@@ -19,12 +19,12 @@ class Settings(BaseSettings):
     zipvoice_num_steps: int = 4
     
     # 共享内存 (Ring Buffer)
-    shm_name: str = "fastvox_shm_main"
+    shm_name: str = "fastvox_shm_v8mb"
     slot_count: int = 5
-    slot_size_mb: int = 2
+    slot_size_mb: int = 8
     
     # 文本与限流
-    max_text_length: int = 500
+    max_text_length: int = 150
     rate_limit_per_minute: int = 30
     
     # 数据库 (使用 SQLite + aiosqlite)

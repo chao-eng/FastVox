@@ -61,6 +61,10 @@ async def lifespan(app: FastAPI):
     worker_pool.start()
     asyncio.create_task(uds_reader())
     asyncio.create_task(slot_manager.watchdog())
+    # 4. 设置组件到 App 状态 (确保接口层可访问)
+    app.state.slot_manager = slot_manager
+    app.state.worker_pool = worker_pool
+    # 同时保留对 tts.py 代码的兼容性支持 (如果还需要)
     container.slot_manager = slot_manager
     container.worker_pool = worker_pool
     logger.info("FastVox is ready.")

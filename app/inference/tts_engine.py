@@ -63,6 +63,26 @@ class TTSEngine:
             logger.error(f"Failed to initialize sherpa-onnx engine: {e}")
             raise TTSInferenceError(f"Engine initialization failed: {e}")
 
+    def _normalize_text(self, text: str) -> str:
+        """极度激进的特殊字符清理 (仅保留核心词表字符)"""
+        import re
+        # 1. 基础映射
+        replacements = {
+            '“': ' ', '”': ' ', '‘': ' ', '’': ' ',
+            '《': ',', '》': ',', '（': '(', '）': ')',
+            '【': '[', '】': ']', '—': '-', '～': '~',
+            '〈': ' ', '〉': ' ', '〔': ' ', '〕': ' ',
+            '『': ' ', '』': ' ', '「': ' ', '」': ' '
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+            
+        # 2. 移除所有其他不可见字符和模型可能不支持的奇位标点 (正则表达式)
+        # 只保留: 中文、英文、数字、基础标点 (. , ! ? ( ) [ ] -) 和空格
+        # pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9\.\,\!\?\(\)\[\]\-\s]'
+        # text = re.sub(pattern, ' ', text)
+        return text
+
     def synthesize(self, 
                   text: str, 
                   speed: float = 1.0,
@@ -75,22 +95,24 @@ class TTSEngine:
         if not self.tts:
             raise TTSInferenceError("Engine not initialized")
 
+        # 文本预处理 (去除 OOV 字符警告)
+        text = self._normalize_text(text)
+        if prompt_text:
+            prompt_text = self._normalize_text(prompt_text)
+
+        logger.info(f"Begin synthesis for text: {text[:30]}...")
+
         try:
             # 执行推理 (同步阻塞调用)
             # 对于 ZipVoice，必须提供参考音色信息
             if prompt_audio and prompt_text:
                 # 1. 使用 PyAV 读取参考音频并转换为 float32 NPCM
-                # 注意: 之前的 upload 逻辑已确保音频为 24kHz Mono
                 prompt_container = av.open(prompt_audio)
                 prompt_samples = []
                 for frame in prompt_container.decode(audio=0):
-                    # 转换为 float32 并归一化 (-1.0 到 1.0)
                     s = frame.to_ndarray().flatten().astype(np.float32)
-                    # 判读原格式进行归一化
                     if frame.format.name == 's16':
                         s = s / 32768.0
-                    elif frame.format.name == 'flt':
-                        pass # 已经是 float
                     prompt_samples.extend(s)
                 prompt_container.close()
 
@@ -104,16 +126,17 @@ class TTSEngine:
                     num_steps=self.num_steps
                 )
             else:
-                # ZipVoice 强制要求参考，若未提供则无法模拟合成
-                raise TTSInferenceError("ZipVoice requires prompt_audio and prompt_text for in-context learning")
+                raise TTSInferenceError("ZipVoice requires prompt_audio and prompt_text")
 
             # 将 float 格式的 audio samples 转换为 int16 PCM (mono)
             pcm = (np.array(audio.samples) * 32767).astype(np.int16)
-            return pcm.tobytes(), audio.sample_rate
+            pcm_bytes = pcm.tobytes()
+            logger.info(f"Synthesis success: {len(audio.samples)} samples generated ({len(pcm_bytes)} bytes)")
+            return pcm_bytes, audio.sample_rate
             
         except Exception as e:
-            logger.error(f"TTS Synthesis failed: {e}")
-            raise TTSInferenceError(f"Synthesis failed: {e}")
+            logger.error(f"TTS Engine internal error: {e}")
+            raise TTSInferenceError(f"Internal synthesis failure: {e}")
 
     def warmup(self):
         """预热推理 (ZipVoice 模式下仅进行模型状态确认)"""

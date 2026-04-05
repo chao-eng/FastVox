@@ -65,6 +65,7 @@ def worker_main(
             uds.send_signal(slot_id, 0, 0, SignalStatus.WRITING)
             
             try:
+                logger.info(f"Worker-{worker_id} picked up task {task.task_id} (Slot: {slot_id})")
                 # 执行推理 (同步阻塞)
                 pcm_data, sample_rate = engine.synthesize(
                     text=task.text,
@@ -75,9 +76,11 @@ def worker_main(
                 
                 # 将 PCM 写入共享内存 Slot
                 shm.write_to_slot(slot_id, pcm_data)
+                logger.debug(f"Worker-{worker_id} wrote {len(pcm_data)} bytes to Slot-{slot_id}")
                 
                 # 发送就绪信令 (offset=0, size=pcm_data_len, status=READY)
                 uds.send_signal(slot_id, 0, len(pcm_data), SignalStatus.READY)
+                logger.info(f"Worker-{worker_id} signaled READY for Task-{task.task_id}")
                 
             except Exception as e:
                 logger.error(f"Worker-{worker_id} error processing task {task.task_id}: {e}")

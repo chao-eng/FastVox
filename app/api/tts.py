@@ -45,6 +45,9 @@ async def tts_stream(
     request_id = uuid.uuid4().hex[:8]
     slot_id = -1
     
+    # 优先从 FastAPI 状态获取
+    app_slot_manager = websocket.app.state.slot_manager if hasattr(websocket.app, "state") else container.slot_manager
+    
     try:
         # 接收参数
         data = await websocket.receive_json()
@@ -68,7 +71,7 @@ async def tts_stream(
                 prompt_text = profile.prompt_text
 
         # 获取 Slot
-        slot_id = await container.slot_manager.acquire(request_id)
+        slot_id = await app_slot_manager.acquire(request_id)
         
         # 文本分片
         splitter = TextSplitter()
@@ -87,16 +90,17 @@ async def tts_stream(
             )
             
             # 提交任务
-            await container.slot_manager.submit_task(slot_id, task)
+            logger.info(f"Submitting task {task.task_id} to queue (Slot: {slot_id})")
+            await app_slot_manager.submit_task(slot_id, task)
             
-            # 等待推理就绪
-            ready = await container.slot_manager.wait_for_ready(slot_id, timeout=30.0)
+            # 等待推理就绪 (增加超时到 90s)
+            ready = await app_slot_manager.wait_for_ready(slot_id, timeout=90.0)
             if not ready:
                 await websocket.send_json({"error": "inference_timeout"})
                 break
                 
             # 从 SHM 读取推理 Worker 写入的真实 PCM 数据
-            data_size = container.slot_manager.get_last_size(slot_id)
+            data_size = app_slot_manager.get_last_size(slot_id)
             if data_size <= 0:
                 logger.warning(f"Inference produced no data for slot {slot_id}")
                 continue
@@ -121,7 +125,7 @@ async def tts_stream(
             pass
     finally:
         if slot_id != -1:
-            container.slot_manager.release(slot_id)
+            app_slot_manager.release(slot_id)
         try:
             await websocket.close()
         except:

@@ -7,8 +7,8 @@ logger = logging.getLogger("FastVox")
 class TextSplitter:
     """智能长文本切分 (基于正则表达式断句)"""
     
-    # 单片段最大字数 (ZipVoice 建议单次推理不超过 200 字以保持稳定性能)
-    MAX_CHUNK_LENGTH: int = 200
+    # 单片段最大字数 (ZipVoice 建议单次推理不超过 150 字以保持稳定性能)
+    MAX_CHUNK_LENGTH: int = 150
     
     # 标点符号映射 (中文 + 英文)
     # 第一级: 终结符

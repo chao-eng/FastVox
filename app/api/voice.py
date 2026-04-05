@@ -38,20 +38,16 @@ async def upload_voice(
     content = await file.read()
     try:
         container = av.open(io.BytesIO(content))
+        if not container.streams.audio:
+             raise HTTPException(status_code=400, detail="No audio stream found")
+        
         stream = container.streams.audio[0]
         
-        # 检查时长 (3s - 30s)
-        duration_sec = float(stream.duration * stream.time_base)
-        if duration_sec < 3.0 or duration_sec > 30.0:
-            raise HTTPException(status_code=400, detail=f"Audio duration must be 3-30s (current: {duration_sec:.1f}s)")
-        
-        # 3. 统一转换并保存为 wav (24kHz, mono, s16)
+        # 3. 初始化转换与保存 (24kHz, mono, s16)
         voice_id = uuid.uuid4()
         target_filename = f"{voice_id}.wav"
         target_path = os.path.join(VOICES_DIR, target_filename)
         
-        # --- 使用 AudioResampler 进行高质量重采样 ---
-        # 强制输出格式: 24000Hz, Mono, s16 (wav 16bit)
         resampler = av.AudioResampler(
             format='s16', 
             layout='mono', 
@@ -60,33 +56,45 @@ async def upload_voice(
         
         output_container = av.open(target_path, mode='w', format='wav')
         output_stream = output_container.add_stream('pcm_s16le', rate=24000)
-        output_stream.layout = 'mono' # 设置 layout 会自动配置 channels
+        output_stream.layout = 'mono'
         
-        # 记录已提取总时间 (防止过短或过长)
-        processed_duration = 0.0
+        # 在处理过程中累加时长，因为 MP3 的头部时长往往不准
+        total_samples = 0
         
-        for frame in container.decode(audio=0):
-            # 将输入帧重采样为输出所需格式
-            resampled_frames = resampler.resample(frame)
-            for rf in resampled_frames:
-                # 编码并写入
+        try:
+            for frame in container.decode(audio=0):
+                # 累加原始采样数以计算时长
+                total_samples += frame.samples
+                
+                # 重采样并写入
+                resampled_frames = resampler.resample(frame)
+                for rf in resampled_frames:
+                    for packet in output_stream.encode(rf):
+                        output_container.mux(packet)
+            
+            # 刷出缓冲区
+            for rf in resampler.resample(None):
                 for packet in output_stream.encode(rf):
                     output_container.mux(packet)
-                    
-        # 刷出重采样器缓冲区
-        for rf in resampler.resample(None):
-            for packet in output_stream.encode(rf):
+            
+            for packet in output_stream.encode(None):
                 output_container.mux(packet)
-                    
-        # 刷出编码缓冲区
-        for packet in output_stream.encode(None):
-            output_container.mux(packet)
+                
+        except Exception as decode_err:
+            logger.warning(f"Partial decode failure (continuing): {decode_err}")
             
         output_container.close()
         container.close()
 
-        # 4. 存入数据库
-        # 注意: audio_path 存储的是绝对路径或基于 data 的相对路径
+        # 4. 最终时长校验 (基于实际处理的采样点)
+        # ZipVoice 后端推理要求采样率 24000
+        # 此处的 stream.rate 是输入的采样率
+        real_duration = total_samples / stream.rate
+        if real_duration < 3.0 or real_duration > 32.0:
+            if os.path.exists(target_path): os.remove(target_path)
+            raise HTTPException(status_code=400, detail=f"Audio duration must be 3-30s (actual: {real_duration:.1f}s)")
+
+        # 5. 存入数据库
         profile = VoiceProfile(
             id=voice_id,
             user_id=user.id,
@@ -94,13 +102,15 @@ async def upload_voice(
             audio_path=target_path,
             prompt_text=prompt_text,
             sample_rate=24000,
-            duration_ms=int(duration_sec * 1000)
+            duration_ms=int(real_duration * 1000)
         )
         session.add(profile)
         await session.commit()
         
-        return {"id": voice_id, "name": name, "duration_sec": duration_sec}
+        return {"id": voice_id, "name": name, "duration_sec": round(real_duration, 2)}
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Voice upload processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process audio: {str(e)}")

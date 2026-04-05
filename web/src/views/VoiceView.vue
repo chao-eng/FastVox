@@ -1,18 +1,58 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X } from 'lucide-vue-next';
 import BaseButton from '../components/ui/BaseButton.vue';
+import client from '../api/client';
 
 const showModal = ref(false);
-const voices = ref([
-  { id: '1', name: '温柔女声 A', text: '这是一个测试句子。', duration: '5.2s', created: '2024-04-05' },
-  { id: '2', name: '沉稳男声 B', text: '欢迎使用 FastVox 系统。', duration: '8.4s', created: '2024-04-04' },
-]);
+const voices = ref([]);
+const isUploading = ref(false);
 
-const handleUpload = () => {
-  // TODO: 后端 API 调用
-  showModal.value = false;
+// 表单数据
+const form = ref({
+  name: '',
+  prompt_text: '',
+  file: null as File | null,
+});
+
+const fetchVoices = async () => {
+  try {
+    const data = await client.get('/voice/list');
+    voices.value = data;
+  } catch (err) { console.error('Failed to fetch voices:', err); }
 };
+
+const handleFileChange = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files) form.value.file = target.files[0];
+};
+
+const handleUpload = async () => {
+  if (!form.value.file || !form.value.name) return;
+  isUploading.value = true;
+  
+  const formData = new FormData();
+  formData.append('file', form.value.file);
+  formData.append('name', form.value.name);
+  formData.append('prompt_text', form.value.prompt_text);
+
+  try {
+    await client.post('/voice/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    showModal.value = false;
+    fetchVoices();
+  } catch (err) { alert('上传失败，请检查文件格式及网络'); } 
+  finally { isUploading.value = false; }
+};
+
+const deleteVoice = async (id: string) => {
+  if (!confirm('确定删除该声纹吗？')) return;
+  await client.delete(`/voice/${id}`);
+  fetchVoices();
+};
+
+onMounted(fetchVoices);
 </script>
 
 <template>

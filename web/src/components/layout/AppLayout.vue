@@ -68,7 +68,7 @@ const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;
       </header>
 
       <div class="page-content">
-        <slot></slot>
+        <router-view></router-view>
       </div>
     </main>
   </div>

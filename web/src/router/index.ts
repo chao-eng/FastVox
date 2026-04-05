@@ -43,7 +43,7 @@ const router = createRouter({
 
 // 简单的路由守卫 (此处可集成 Token 校验)
 router.beforeEach((to, from, next) => {
-  const isAuthenticated = true; # 模拟已登录
+  const isAuthenticated = true; // 模拟已登录
   if (to.name !== 'Login' && !isAuthenticated) next({ name: 'Login' });
   else next();
 });

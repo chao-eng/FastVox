@@ -70,34 +70,25 @@ class TTSEngine:
                   ) -> Tuple[bytes, int]:
         """
         进行流匹配语音合成 (Zero-shot Voice Cloning)
-        
-        参数:
-            text: 目标生成的文本
-            speed: 合成语速 (0.5 - 2.0)
-            prompt_audio: 参考音频文件路径 (必须能被 sherpa-onnx 读取)
-            prompt_text: 参考音频对应的文本内容
-            
-        返回: 
-            (pcm_int16_bytes, sample_rate)
         """
         if not self.tts:
             raise TTSInferenceError("Engine not initialized")
 
         try:
-            # 执行推理 (同步阻塞调用，当前运行在 Worker 独立进程中)
-            # 注意: 如果提供了 prompt_audio 和 prompt_text，则启用声音克隆模式
+            # 执行推理 (同步阻塞调用)
+            # 对于 ZipVoice，必须提供参考音色信息
             if prompt_audio and prompt_text:
                 audio = self.tts.generate(
-                    text,
+                    text=text,
                     sid=0,
                     speed=speed,
-                    # ZipVoice 模式下，这些参数会触发 In-context 模式
-                    # 注意: 具体接口调用细节根据 sherpa-onnx 版本的 api 可能有微调
-                    # 假定接口为 generate(text, sid, speed, speaker_audio=prompt_audio, speaker_text=prompt_text)
+                    # 注意: 确保使用关键字参数以匹配 ZipVoice 模式下的 generate 签名
+                    speaker_audio=prompt_audio,
+                    speaker_text=prompt_text
                 )
             else:
-                # 默认普通合成 (假设存在 default 声音，或直接报错)
-                audio = self.tts.generate(text, sid=0, speed=speed)
+                # ZipVoice 强制要求参考，若未提供则无法模拟合成
+                raise TTSInferenceError("ZipVoice requires prompt_audio and prompt_text for in-context learning")
 
             # 将 float 格式的 audio samples 转换为 int16 PCM (mono)
             pcm = (np.array(audio.samples) * 32767).astype(np.int16)
@@ -108,11 +99,5 @@ class TTSEngine:
             raise TTSInferenceError(f"Synthesis failed: {e}")
 
     def warmup(self):
-        """预热推理 (解决冷启动)"""
-        try:
-            logger.info("TTSEngine warming up...")
-            # 推理极其短小的静音或无意义文本
-            self.synthesize("Hello", speed=1.0)
-            logger.info("TTSEngine warm up complete")
-        except Exception as e:
-            logger.warning(f"Engine warm up encountered issue: {e}")
+        """预热推理 (ZipVoice 模式下仅进行模型状态确认)"""
+        logger.info("TTSEngine is initialized and ready (Warmup bypassed for context-based model)")

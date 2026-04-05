@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X } from 'lucide-vue-next';
+import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X, Play, Pause } from 'lucide-vue-next';
 import BaseButton from '../components/ui/BaseButton.vue';
 import client from '../api/client';
 
@@ -9,6 +9,10 @@ const showModal = ref(false);
 const voices = ref<any[]>([]);
 const isUploading = ref(false);
 const isDragOver = ref(false);
+
+const audio = new Audio();
+const currentlyPlaying = ref<string | null>(null);
+const isLoadingAudio = ref<string | null>(null);
 
 // 表单数据
 const form = ref({
@@ -89,6 +93,43 @@ const deleteVoice = async (id: string) => {
   }
 };
 
+const playVoice = async (id: string) => {
+  if (currentlyPlaying.value === id) {
+    audio.pause();
+    currentlyPlaying.value = null;
+    return;
+  }
+
+  isLoadingAudio.value = id;
+  try {
+    // 使用 axios client 以便带上 Auth Token
+    const blob: any = await client.get(`/voice/${id}/audio`, {
+      responseType: 'blob'
+    });
+    
+    const blobUrl = URL.createObjectURL(blob);
+    audio.src = blobUrl;
+    await audio.play();
+    currentlyPlaying.value = id;
+    
+    audio.onended = () => {
+      currentlyPlaying.value = null;
+      URL.revokeObjectURL(blobUrl);
+    };
+    
+    // 如果中途切换了音频，也需要释放
+    audio.onplay = () => {
+      isLoadingAudio.value = null;
+    };
+
+  } catch (err) {
+    console.error('Playback error:', err);
+    alert('播放失败');
+  } finally {
+    isLoadingAudio.value = null;
+  }
+};
+
 onMounted(fetchVoices);
 </script>
 
@@ -112,6 +153,14 @@ onMounted(fetchVoices);
             <h4>{{ v.name }}</h4>
             <span class="duration">{{ v.duration_sec?.toFixed(1) }}s</span>
           </div>
+          <button 
+            class="play-preview-btn" 
+            :class="{ playing: currentlyPlaying === v.id }"
+            @click="playVoice(v.id)"
+            :disabled="isLoadingAudio === v.id"
+          >
+            <component :is="currentlyPlaying === v.id ? Pause : Play" :size="16" />
+          </button>
         </div>
         
         <div class="card-body">
@@ -218,6 +267,21 @@ onMounted(fetchVoices);
 .meta { font-size: 12px; color: var(--color-text-disabled); display: flex; align-items: center; gap: 4px; }
 .delete-btn { color: var(--color-text-disabled); }
 .delete-btn:hover { color: var(--color-danger); }
+
+.play-preview-btn {
+  margin-left: auto; width: 32px; height: 32px; 
+  border-radius: 50%; border: none; background: var(--color-bg-page);
+  color: var(--color-primary); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; transition: var(--transition);
+}
+.play-preview-btn:hover { background: var(--color-primary-light); transform: scale(1.1); }
+.play-preview-btn.playing { background: var(--color-primary); color: white; animation: pulse 2s infinite; }
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+}
 
 .add-card {
   border: 2px dashed var(--color-border); border-radius: var(--radius-lg);

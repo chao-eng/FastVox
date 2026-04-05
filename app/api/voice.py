@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.db.engine import VoiceProfile, User, get_session
@@ -32,7 +33,7 @@ async def upload_voice(
     """
     # 1. 验证文件格式 (限常见音频)
     if not file.content_type.startswith("audio/"):
-        raise HTTPException(status_code=400, detail="Invalid audio file type")
+        raise HTTPException(status_code=400, detail="无效的音频文件类型")
     
     # 2. 读取音频进行校检 (使用临时文件提高 MP3/PyAV 协议兼容性)
     import tempfile
@@ -44,7 +45,7 @@ async def upload_voice(
     try:
         container = av.open(tmp_path)
         if not container.streams.audio:
-             raise HTTPException(status_code=400, detail="No audio stream found")
+             raise HTTPException(status_code=400, detail="未发现音频流")
         
         stream = container.streams.audio[0]
         # 启用多线程解码提高速度和稳定性
@@ -99,7 +100,7 @@ async def upload_voice(
         real_duration = total_samples / stream.rate
         if real_duration < 3.0 or real_duration > 32.0:
             if os.path.exists(target_path): os.remove(target_path)
-            raise HTTPException(status_code=400, detail=f"Audio duration must be 3-30s (actual: {real_duration:.1f}s)")
+            raise HTTPException(status_code=400, detail=f"音频时长必须在 3-30秒之间 (当前为: {real_duration:.1f}秒)")
 
         # 5. 存入数据库
         profile = VoiceProfile(
@@ -120,7 +121,7 @@ async def upload_voice(
         raise he
     except Exception as e:
         logger.error(f"Voice upload processing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"音频处理失败: {str(e)}")
     finally:
         # 清理临时文件
         try:
@@ -163,7 +164,7 @@ async def delete_voice(
     profile = result.scalar_one_or_none()
     
     if not profile:
-        raise HTTPException(status_code=404, detail="Voice profile not found")
+        raise HTTPException(status_code=404, detail="未发现该声纹档案")
         
     # 删除本地文件
     try:
@@ -176,3 +177,26 @@ async def delete_voice(
     await session.commit()
     
     return {"status": "deleted"}
+
+@router.get("/{voice_id}/audio")
+async def get_voice_audio(
+    voice_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """获取原音频文件进行试听"""
+    statement = select(VoiceProfile).where(
+        VoiceProfile.id == voice_id, 
+        VoiceProfile.user_id == user.id
+    )
+    result = await session.execute(statement)
+    profile = result.scalar_one_or_none()
+    
+    if not profile or not os.path.exists(profile.audio_path):
+        raise HTTPException(status_code=404, detail="音频文件不存在")
+        
+    return FileResponse(
+        profile.audio_path, 
+        media_type="audio/wav", 
+        filename=os.path.basename(profile.audio_path)
+    )

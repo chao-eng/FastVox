@@ -37,7 +37,7 @@ async def tts_stream(
     strategy = auth_backend.get_strategy()
     user = await strategy.read_token(token, user_manager)
     if not user or not user.is_active:
-        await websocket.close(code=4001, reason="Unauthorized")
+        await websocket.close(code=4001, reason="身份认证失败")
         return
 
     await websocket.accept()
@@ -56,7 +56,7 @@ async def tts_stream(
         speed = float(data.get("speed", 1.0))
         
         if not target_text:
-            await websocket.send_json({"error": "empty_text"})
+            await websocket.send_json({"error": "待合成文本不能为空"})
             return
 
         # 获取声纹上下文
@@ -96,7 +96,7 @@ async def tts_stream(
             # 等待推理就绪 (增加超时到 90s)
             ready = await app_slot_manager.wait_for_ready(slot_id, timeout=90.0)
             if not ready:
-                await websocket.send_json({"error": "inference_timeout"})
+                await websocket.send_json({"error": "推理任务超时"})
                 break
                 
             # 从 SHM 读取推理 Worker 写入的真实 PCM 数据

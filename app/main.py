@@ -100,7 +100,7 @@ async def initial_setup(req: InitialSetupRequest):
         # 1. 确认是否已有用户
         result = await session.exec(select(User))
         if result.first() is not None:
-            raise HTTPException(status_code=400, detail="Already initialized")
+            raise HTTPException(status_code=400, detail="系统已初始化，请勿重复操作")
         
         # 2. 手动创建数据库适配器和管理器 (因为我们已经有了 session)
         from fastapi_users.db import SQLAlchemyUserDatabase

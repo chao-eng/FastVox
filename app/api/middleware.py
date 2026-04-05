@@ -29,7 +29,7 @@ class RateLimiter:
         
         if tokens < 1:
             logger.warning(f"Rate limit exceeded for IP: {ip}")
-            raise HTTPException(status_code=429, detail="Too Many Requests")
+            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
         
         # 扣减一个令牌
         self.bucket[ip] = (tokens - 1, now)
@@ -39,5 +39,5 @@ limiter = RateLimiter(settings.rate_limit_per_minute)
 async def check_text_length(text: str):
     """文本长度校验"""
     if len(text) > settings.max_text_length:
-        raise HTTPException(status_code=422, detail=f"Text exceeds limit of {settings.max_text_length} chars")
+        raise HTTPException(status_code=422, detail=f"文本长度超过 {settings.max_text_length} 字符限制")
     return text

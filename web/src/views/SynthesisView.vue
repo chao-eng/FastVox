@@ -55,7 +55,7 @@ const handleSynthesize = () => {
   socket.onclose = () => {
     isSynthesizing.value = false;
     if (audioChunks.length > 0) {
-      const blob = new Blob(audioChunks, { type: 'audio/ogg' });
+      const blob = new Blob(audioChunks as any, { type: 'audio/ogg' });
       audioUrl.value = URL.createObjectURL(blob);
     }
   };
@@ -64,6 +64,14 @@ const handleSynthesize = () => {
     isSynthesizing.value = false;
     alert('WebSocket 合成连接失败');
   };
+};
+
+const downloadAudio = () => {
+  if (!audioUrl.value) return;
+  const link = document.createElement('a');
+  link.href = audioUrl.value;
+  link.download = `fastvox_${Date.now()}.ogg`;
+  link.click();
 };
 
 onMounted(fetchVoices);
@@ -125,7 +133,7 @@ onMounted(fetchVoices);
           <div v-if="audioUrl && !isSynthesizing" class="player">
             <audio controls :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
             <div class="player-actions">
-              <BaseButton type="secondary" size="md" @click="() => {}">
+              <BaseButton type="secondary" size="md" @click="downloadAudio">
                 <Download :size="18" /> 保存录音
               </BaseButton>
             </div>

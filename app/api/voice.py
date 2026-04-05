@@ -34,14 +34,21 @@ async def upload_voice(
     if not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="Invalid audio file type")
     
-    # 2. 读取音频进行校检 (使用 PyAV)
-    content = await file.read()
+    # 2. 读取音频进行校检 (使用临时文件提高 MP3/PyAV 协议兼容性)
+    import tempfile
+    
+    with tempfile.NamedTemporaryFile(suffix='.tmp', delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
     try:
-        container = av.open(io.BytesIO(content))
+        container = av.open(tmp_path)
         if not container.streams.audio:
              raise HTTPException(status_code=400, detail="No audio stream found")
         
         stream = container.streams.audio[0]
+        # 启用多线程解码提高速度和稳定性
+        stream.thread_type = 'AUTO'
         
         # 3. 初始化转换与保存 (24kHz, mono, s16)
         voice_id = uuid.uuid4()
@@ -114,6 +121,13 @@ async def upload_voice(
     except Exception as e:
         logger.error(f"Voice upload processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process audio: {str(e)}")
+    finally:
+        # 清理临时文件
+        try:
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except:
+            pass
 
 @router.get("/list")
 async def list_voices(

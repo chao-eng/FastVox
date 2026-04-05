@@ -63,24 +63,47 @@ class TTSEngine:
             logger.error(f"Failed to initialize sherpa-onnx engine: {e}")
             raise TTSInferenceError(f"Engine initialization failed: {e}")
 
-    def _normalize_text(self, text: str) -> str:
-        """极度激进的特殊字符清理 (仅保留核心词表字符)"""
+    def _number_to_chinese(self, text: str) -> str:
+        """将阿拉伯数字转换为中文念法"""
+        units = ['', '十', '百', '千', '万', '十', '百', '千', '亿']
+        digits = '零一二三四五六七八九'
+        
+        def _to_cn(num_str):
+            if not num_str.isdigit(): return num_str
+            n = int(num_str)
+            if n == 0: return digits[0]
+            res = ""
+            # 简单处理：如果是超长数字（如电话），逐个念
+            if len(num_str) > 5:
+                return "".join(digits[int(d)] for d in num_str)
+            # 正常处理：位权转换
+            for i, d in enumerate(num_str[::-1]):
+                if d != '0':
+                    res = digits[int(d)] + units[i] + res
+                else:
+                    if not res.startswith(digits[0]):
+                        res = digits[0] + res
+            res = res.rstrip('零')
+            if res.startswith('一十'): res = res[1:]
+            return res
+
         import re
-        # 1. 基础映射
+        return re.sub(r'\d+', lambda x: _to_cn(x.group()), text)
+
+    def _normalize_text(self, text: str) -> str:
+        """强化文本清理：数字转中文 + 符号清理"""
+        import re
+        # 1. 数字转换
+        text = self._number_to_chinese(text)
+        
+        # 2. 基础映射
         replacements = {
             '“': ' ', '”': ' ', '‘': ' ', '’': ' ',
             '《': ',', '》': ',', '（': '(', '）': ')',
-            '【': '[', '】': ']', '—': '-', '～': '~',
-            '〈': ' ', '〉': ' ', '〔': ' ', '〕': ' ',
-            '『': ' ', '』': ' ', '「': ' ', '」': ' '
+            '【': '[', '】': ']', '—': '-', '～': '~'
         }
         for k, v in replacements.items():
             text = text.replace(k, v)
-            
-        # 2. 移除所有其他不可见字符和模型可能不支持的奇位标点 (正则表达式)
-        # 只保留: 中文、英文、数字、基础标点 (. , ! ? ( ) [ ] -) 和空格
-        # pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9\.\,\!\?\(\)\[\]\-\s]'
-        # text = re.sub(pattern, ' ', text)
         return text
 
     def synthesize(self, 

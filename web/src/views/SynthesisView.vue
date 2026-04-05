@@ -8,6 +8,8 @@ const text = ref('');
 const voiceId = ref('');
 const speed = ref(1.0);
 const isSynthesizing = ref(false);
+const hasReceivedData = ref(false);
+const audioChunks = ref<Uint8Array[]>([]); // 修改：提升为响应式 ref 供模板使用
 const audioUrl = ref<string | null>(null);
 const voices = ref<any[]>([]);
 
@@ -30,10 +32,11 @@ const handleSynthesize = () => {
   
   // 1. 初始化状态
   isSynthesizing.value = true;
+  hasReceivedData.value = false;
+  audioChunks.value = []; // 重置分片统计
   if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
   audioUrl.value = null;
   
-  const audioChunks: Uint8Array[] = [];
   audioChunkQueue = [];
 
   // 2. 初始化 MediaSource (MSE) 实现边下边播
@@ -44,15 +47,26 @@ const handleSynthesize = () => {
     if (!mediaSource) return;
     try {
       sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
+      
+      // 关键修复：如果在 Buffer 就绪前已经有分片到达了队列，立刻喂入第一个分片触发更新循环
+      if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
+        const firstChunk = audioChunkQueue.shift()!;
+        sourceBuffer.appendBuffer(firstChunk.buffer as ArrayBuffer);
+      }
+
       sourceBuffer.addEventListener('updateend', () => {
-        // 当 Buffer 更新完成后，处理队列中的剩余数据
+        // 当 Buffer 更新完成后，自动处理队列中的剩余数据
         if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
           const nextChunk = audioChunkQueue.shift()!;
           sourceBuffer.appendBuffer(nextChunk.buffer as ArrayBuffer);
         }
       });
+
+      sourceBuffer.addEventListener('error', (e) => {
+        console.error("SourceBuffer error:", e);
+      });
     } catch (e) {
-      console.warn("MSE not supported for audio/ogg, falling back to Blob mode.", e);
+      console.warn("MSE not supported for audio/webm, falling back to Blob mode.", e);
     }
   });
 
@@ -78,7 +92,8 @@ const handleSynthesize = () => {
       }
 
       const chunk = new Uint8Array(event.data);
-      audioChunks.push(chunk);
+      audioChunks.value.push(chunk);
+      hasReceivedData.value = true; // 标记已开始接收数据
 
       // 将分片送入 MSE Buffer
       if (sourceBuffer && !sourceBuffer.updating && audioChunkQueue.length === 0) {
@@ -103,8 +118,8 @@ const handleSynthesize = () => {
     }
 
     // 依然保留一个完整的 Blob 供后续“下载”使用
-    if (audioChunks.length > 0) {
-      const fullBlob = new Blob(audioChunks as any, { type: 'audio/webm' });
+    if (audioChunks.value.length > 0) {
+      const fullBlob = new Blob(audioChunks.value as any, { type: 'audio/webm' });
       // 只有在不支持 MSE 或者需要持久化 URL 时才替换
       // 这里我们为了保持进度条能正常 seek，合成完后将 URL 替换为完整 Blob
       if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
@@ -177,14 +192,35 @@ onMounted(fetchVoices);
             <p>等待任务提交...</p>
           </div>
           
-          <div v-if="audioUrl" class="player">
-            <div v-if="isSynthesizing" class="streaming-indicator">
-              <div class="dot-flashing"></div>
-              <span>流式合成中，可即时播放...</span>
+          <!-- 状态 1: 推理已开始，但还未收到第一个片段 -->
+          <div v-if="isSynthesizing && !hasReceivedData" class="status-container preparing">
+            <div class="loader"></div>
+            <p>正在初始化引擎并推理首个片段...</p>
+          </div>
+
+          <!-- 状态 2: 已有音频数据，但正在流式持续生成 -->
+          <div v-if="isSynthesizing && hasReceivedData && audioUrl" class="player">
+            <div class="streaming-indicator">
+              <div class="pulse-bar"></div>
+              <span>流式合成中 (已接收 {{ audioChunks.length }} 段)，可即时播放...</span>
+            </div>
+            <audio controls autoplay :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
+            <div class="player-actions">
+              <BaseButton type="secondary" size="md" disabled>
+                <Download :size="18" /> 完成后可保存
+              </BaseButton>
+            </div>
+          </div>
+
+          <!-- 状态 3: 合成全部结束 -->
+          <div v-if="!isSynthesizing && audioUrl" class="player">
+            <div class="complete-indicator">
+              <div class="check-icon">✓</div>
+              <span>文本合成已全部完成</span>
             </div>
             <audio controls :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
             <div class="player-actions">
-              <BaseButton type="secondary" size="md" :disabled="isSynthesizing" @click="downloadAudio">
+              <BaseButton type="secondary" size="md" @click="downloadAudio">
                 <Download :size="18" /> 保存录音
               </BaseButton>
             </div>
@@ -221,10 +257,18 @@ onMounted(fetchVoices);
 .player { width: 100%; }
 .player-actions { display: flex; gap: 12px; justify-content: center; align-items: center; }
 
+.status-container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.status-container p { font-size: 14px; color: var(--color-primary); font-weight: 500; }
+
+/* 转圈动画 */
+.loader { border: 3px solid #f3f3f3; border-top: 3px solid var(--color-primary); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
 .streaming-indicator { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; color: var(--color-primary); font-size: 13px; font-weight: 500; }
-.dot-flashing { position: relative; width: 6px; height: 6px; border-radius: 5px; background-color: var(--color-primary); color: var(--color-primary); animation: dot-flashing 1s infinite linear alternate; animation-delay: 0.5s; }
-.dot-flashing::before, .dot-flashing::after { content: ""; display: inline-block; position: absolute; top: 0; width: 6px; height: 6px; border-radius: 5px; background-color: var(--color-primary); color: var(--color-primary); animation: dot-flashing 1s infinite linear alternate; }
-.dot-flashing::before { left: -10px; animation-delay: 0s; }
-.dot-flashing::after { left: 10px; animation-delay: 1s; }
-@keyframes dot-flashing { 0% { background-color: var(--color-primary); } 50%, 100% { background-color: #E1EAFF; } }
+.pulse-bar { width: 12px; height: 12px; background: var(--color-primary); border-radius: 2px; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0% { transform: scale(0.9); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.6; } 100% { transform: scale(0.9); opacity: 1; } }
+
+.complete-indicator { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; color: var(--color-success); font-size: 13px; font-weight: 600; }
+.check-icon { width: 18px; height: 18px; background: var(--color-success); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+
 </style>

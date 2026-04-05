@@ -93,7 +93,7 @@ onMounted(fetchVoices);
             <BaseButton type="text" size="sm" @click="text = ''">
               <Trash2 :size="14" /> 清空文本
             </BaseButton>
-            <BaseButton type="primary" size="lg" :loading="isSynthesizing" :disabled="!text || isTextOverLimit" @click="handleSynthesize">
+            <BaseButton type="primary" size="lg" :loading="isSynthesizing" :disabled="!text || !voiceId || isTextOverLimit" @click="handleSynthesize">
               <Send :size="18" /> 开始合成
             </BaseButton>
           </div>

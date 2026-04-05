@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 const props = withDefaults(defineProps<{
   type?: 'primary' | 'secondary' | 'text' | 'danger';
   loading?: boolean;
@@ -13,12 +14,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits(['click']);
 
-const classes = [
+const classes = computed(() => [
   'btn',
   `btn-${props.type}`,
   `btn-s-${props.size}`,
   { 'is-loading': props.loading, 'is-disabled': props.disabled }
-];
+]);
 </script>
 
 <template>

@@ -24,7 +24,7 @@ class SlotManager:
     使用 asyncio.Semaphore 限制物理并发 (SLOT_COUNT)
     """
     
-    SLOT_TTL = 30 # 秒，单个 Slot 推理最大时长
+    SLOT_TTL = 120 # 秒，单个 Slot 推理最大时长 (增加到 120s 以适应长假和 CPU 推理)
     
     def __init__(self, worker_pool: WorkerPool):
         self._worker_pool = worker_pool
@@ -61,6 +61,14 @@ class SlotManager:
         
         logger.info(f"Slot {slot_id} assigned to request {request_id}")
         return slot_id
+
+    def reset_event(self, slot_id: int):
+        """重置 Slot 事件状态，用于流式分片推理"""
+        if slot_id in self._events:
+            self._events[slot_id].clear()
+            if slot_id in self._slots:
+                self._slots[slot_id].last_size = 0
+            logger.debug(f"Slot {slot_id} event reset for next segment")
 
     def release(self, slot_id: int):
         """释放 Slot 并唤醒等待队列"""

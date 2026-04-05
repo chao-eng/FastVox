@@ -73,13 +73,16 @@ async def tts_stream(
         # 获取 Slot
         slot_id = await app_slot_manager.acquire(request_id)
         
-        # 文本分片
-        splitter = TextSplitter()
+        # 文本分片 (ZipVoice 模式下建议单次推理不超过 150 字)
+        splitter = TextSplitter(max_length=150)
         segments = splitter.split(target_text)
         
         encoder = AudioEncoder()
         
         for i, segment in enumerate(segments):
+            # ！！！关键：在开始该分片的推理排队前，重置 slot 的 ready 状态
+            app_slot_manager.reset_event(slot_id)
+            
             task = InferenceTask(
                 task_id=f"{request_id}_{i}",
                 slot_id=slot_id,

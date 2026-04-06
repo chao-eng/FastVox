@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { 
   MessageSquare, 
@@ -12,10 +12,21 @@ import {
   Sun,
   Moon
 } from 'lucide-vue-next';
+import client from '../../api/client';
 
 const router = useRouter();
 const route = useRoute();
 const isCollapsed = ref(false);
+const userName = ref('Guest');
+
+onMounted(async () => {
+  try {
+    const user: any = await client.get('/users/me');
+    userName.value = user.nickname || user.email;
+  } catch (err) {
+    console.error('Failed to fetch user:', err);
+  }
+});
 
 const navItems = [
   { name: '语音合成', path: '/', icon: MessageSquare },
@@ -68,7 +79,14 @@ const handleLogout = () => {
         </div>
         <div class="user">
           <button class="theme-toggle"><Sun :size="18" /></button>
-          <div class="avatar">U</div>
+          <div class="user-profile" :title="userName">
+            <div class="avatar-circle">
+              {{ userName.charAt(0).toUpperCase() }}
+            </div>
+            <span class="user-name">
+              {{ userName.length > 6 ? userName.substring(0, 6) : userName }}
+            </span>
+          </div>
           <button class="logout-btn" title="退出登录" @click="handleLogout">
             <LogOut :size="18" />
           </button>
@@ -169,10 +187,17 @@ const handleLogout = () => {
 
 .breadcrumb { font-weight: var(--font-weight-semibold); font-size: 16px; }
 
-.user { display: flex; align-items: center; gap: 16px; }
-.theme-toggle { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; }
-.avatar { width: 32px; height: 32px; background: #E5E6EB; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
-.logout-btn { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s; padding: 4px; border-radius: 4px; }
+.user { display: flex; align-items: center; gap: 20px; }
+.theme-toggle { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; transition: color 0.2s; }
+.theme-toggle:hover { color: var(--color-primary); }
+
+.user-profile { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; background: #f4f5f7; border-radius: 20px; transition: all 0.2s; border: 1px solid transparent; cursor: default; }
+.user-profile:hover { background: #ebedf0; border-color: var(--color-border); }
+
+.avatar-circle { width: 28px; height: 28px; background: var(--color-primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.user-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.logout-btn { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; padding: 6px; border-radius: 6px; }
 .logout-btn:hover { color: #F53F3F; background: #FFF1F0; }
 
 .page-content { flex: 1; padding: 32px; overflow-y: auto; max-width: 1200px; width: 100%; margin: 0 auto; }

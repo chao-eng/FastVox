@@ -122,6 +122,7 @@ async def initial_setup(req: InitialSetupRequest):
 
 app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/v1/auth/jwt", tags=["Auth"])
 app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/api/v1/users", tags=["Users"])
 app.include_router(voice_router, prefix="/api/v1")
 app.include_router(tts_router, prefix="/api/v1")
 app.include_router(stats_router, prefix="/api/v1")

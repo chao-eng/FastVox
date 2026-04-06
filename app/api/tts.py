@@ -10,7 +10,7 @@ from app.db.engine import VoiceProfile, User, UsageLog, get_session
 from app.auth.manager import fastapi_users, get_user_manager, UserManager, auth_backend
 from app.core.slot_manager import SlotManager
 from app.core.worker_pool import WorkerPool, InferenceTask
-from app.core.audio_encoder import AudioEncoder, StreamingEncoder
+from app.core.audio_encoder import AudioEncoder, StreamingEncoder, PcmTempoProcessor
 from app.inference.text_splitter import TextSplitter
 from app.core.shm_manager import shm_manager
 
@@ -80,8 +80,13 @@ async def tts_stream(
         splitter = TextSplitter(max_length=150)
         segments = splitter.split(target_text)
         
-        # 初始化有状态的流式编码器 (单会话单容器)
+        # 初始化有状态的流式编码器 (纯编码，不含变速)
         encoder = StreamingEncoder(sample_rate=24000)
+        
+        # 初始化变速处理器 (独立于编码器，在 PCM 层面进行无音高扭曲变速)
+        tempo_processor = None
+        if abs(speed - 1.0) > 0.01:
+            tempo_processor = PcmTempoProcessor(sample_rate=24000, speed=speed)
         
         # 初始化语境变量 (用于多分片间的平滑衔接)
         # 第一段默认使用用户上传的静态声纹配置
@@ -100,7 +105,7 @@ async def tts_stream(
                 prompt_audio_path=current_prompt_audio_path,
                 prompt_text=current_prompt_text,
                 prompt_audio_samples=current_prompt_audio_samples,
-                speed=speed
+                speed=1.0 # 强制模型推理层保持 1.0 倍速，以保证最高的稳定性
             )
             
             # 提交任务
@@ -122,6 +127,17 @@ async def tts_stream(
             pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=data_size)
             total_pcm_bytes += len(pcm_data) # 累加数据量
             
+            # 如果存在变速处理器，先在 PCM 层面进行无损变速
+            if tempo_processor:
+                pcm_data = tempo_processor.process(pcm_data)
+            
+            # 关键：计算本段音频的时长 (ms) 并提前通过 JSON 发送给前端
+            segment_duration_ms = int(len(pcm_data) / 2 / 24000 * 1000)
+            await websocket.send_json({
+                "type": "metadata",
+                "segment_duration_ms": segment_duration_ms
+            })
+            
             # 使用有状态编码器进行 Opus 编码 (持续追加到同一个 Ogg 容器)
             chunk = encoder.encode_chunk(pcm_data)
             if chunk:
@@ -135,6 +151,14 @@ async def tts_stream(
             # 有了实时采样语境后，不再需要之前的静态声纹路径
             current_prompt_audio_path = None
                 
+        # 刷出变速处理器中残留的 PCM 数据
+        if tempo_processor:
+            residual_pcm = tempo_processor.flush()
+            if residual_pcm:
+                chunk = encoder.encode_chunk(residual_pcm)
+                if chunk:
+                    await websocket.send_bytes(chunk)
+
         # 结束编码并发送 Ogg Footer
         footer = encoder.close()
         if footer:

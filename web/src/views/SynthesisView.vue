@@ -48,12 +48,23 @@ const toggleVoicePreview = () => {
   };
 };
 
+const totalDurationMs = ref(0); // 实时计算合成的总时长
+
+// 将毫秒转换为 00:00.0s 格式
+const formatDuration = (ms: number) => {
+  const seconds = ms / 1000;
+  const mins = Math.floor(seconds / 60);
+  const secs = (seconds % 60).toFixed(1);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(4, '0')}s`;
+};
+
 const handleSynthesize = () => {
   if (!text.value || !voiceId.value) return;
   
   // 1. 初始化状态
   isSynthesizing.value = true;
   hasReceivedData.value = false;
+  totalDurationMs.value = 0; // 重置时长统计
   audioChunks.value = []; // 重置分片统计
   if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
   audioUrl.value = null;
@@ -106,6 +117,7 @@ const handleSynthesize = () => {
   };
 
   socket.onmessage = (event) => {
+    // 监听：或者是二进制音频流
     if (event.data instanceof ArrayBuffer) {
       if (event.data.byteLength === 0) {
         socket.close();
@@ -121,6 +133,17 @@ const handleSynthesize = () => {
         sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
       } else {
         audioChunkQueue.push(chunk);
+      }
+    } 
+    // 或者是非二进制消息 (元数据)
+    else if (typeof event.data === 'string') {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'metadata' && msg.segment_duration_ms) {
+          totalDurationMs.value += msg.segment_duration_ms;
+        }
+      } catch (e) {
+        // 忽略非 JSON
       }
     }
   };
@@ -237,12 +260,12 @@ onMounted(fetchVoices);
           <div v-if="isSynthesizing && hasReceivedData && audioUrl" class="player">
             <div class="streaming-indicator">
               <div class="pulse-bar"></div>
-              <span>流式合成中 (已接收 {{ audioChunks.length }} 段)，可即时播放...</span>
+              <span>流式合成中 · 累计生成时长 {{ formatDuration(totalDurationMs) }} ({{ audioChunks.length }} 段)</span>
             </div>
             <audio controls autoplay :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
             <div class="player-actions">
               <BaseButton type="secondary" size="md" disabled>
-                <Download :size="18" /> 完成后可保存
+                <Download :size="18" /> 合成中...
               </BaseButton>
             </div>
           </div>
@@ -251,7 +274,7 @@ onMounted(fetchVoices);
           <div v-if="!isSynthesizing && audioUrl" class="player">
             <div class="complete-indicator">
               <div class="check-icon">✓</div>
-              <span>文本合成已全部完成</span>
+              <span>文本合成已全部完成 · 总时长 {{ formatDuration(totalDurationMs) }}</span>
             </div>
             <audio controls :src="audioUrl" style="width: 100%; margin-bottom: 20px;"></audio>
             <div class="player-actions">

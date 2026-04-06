@@ -109,8 +109,71 @@ class AudioEncoder:
         except Exception as e:
             logger.error(f"Stateful streaming audio encoding failed: {e}")
 
+class PcmTempoProcessor:
+    """
+    在 PCM 层面进行无音高扭曲变速处理。
+    原理：利用 FFmpeg 的 atempo 滤镜对原始 PCM 数据进行时间拉伸/压缩，
+    输出变速后的 PCM 字节流。与编码器完全解耦。
+    """
+    def __init__(self, sample_rate: int = 24000, speed: float = 1.0):
+        self.sample_rate = sample_rate
+        self.speed = speed
+        self.graph = av.filter.Graph()
+        self.src = self.graph.add_abuffer(
+            sample_rate=sample_rate,
+            format='s16',
+            layout='mono',
+        )
+        self.sink = self.graph.add("abuffersink")
+        atempo_node = self.graph.add("atempo", str(speed))
+        # 关键：atempo 内部使用 dblp (双精度浮点) 格式，必须用 aformat 转回 s16
+        aformat_node = self.graph.add("aformat", "sample_fmts=s16:channel_layouts=mono")
+        self.src.link_to(atempo_node)
+        atempo_node.link_to(aformat_node)
+        aformat_node.link_to(self.sink)
+        self.graph.configure()
+
+    def process(self, pcm: bytes) -> bytes:
+        """处理一个 PCM 分片，返回变速后的 PCM 字节"""
+        if not pcm:
+            return b""
+        data = np.frombuffer(pcm, dtype=np.int16).reshape(1, -1)
+        frame = av.AudioFrame.from_ndarray(data, format='s16', layout='mono')
+        frame.sample_rate = self.sample_rate
+
+        self.src.push(frame)
+
+        parts = []
+        while True:
+            try:
+                out_frame = self.sink.pull()
+                # aformat 已经保证输出是 s16 格式，直接转换即可
+                out_data = out_frame.to_ndarray().flatten()
+                parts.append(out_data.astype(np.int16).tobytes())
+            except av.FFmpegError:
+                break
+        return b''.join(parts)
+
+    def flush(self) -> bytes:
+        """刷出滤镜中残留的音频数据"""
+        try:
+            self.src.push(None)
+            parts = []
+            while True:
+                try:
+                    out_frame = self.sink.pull()
+                    out_data = out_frame.to_ndarray().flatten()
+                    parts.append(out_data.astype(np.int16).tobytes())
+                except av.FFmpegError:
+                    break
+            return b''.join(parts)
+        except Exception:
+            return b''
+
+
+
 class StreamingEncoder:
-    """有状态的流式编码器，适合在异步循环中分段调用"""
+    """有状态的流式编码器，适合在异步循环中分段调用 (纯编码，不含变速逻辑)"""
     def __init__(self, sample_rate: int = 24000, channels: int = 1):
         self.sample_rate = sample_rate
         self.channels = channels

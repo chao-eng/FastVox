@@ -245,7 +245,7 @@ onMounted(fetchVoices);
 .voice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
 
 .voice-card {
-  background: white; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
   padding: 20px; transition: var(--transition); display: flex; flex-direction: column;
 }
 
@@ -293,7 +293,7 @@ onMounted(fetchVoices);
 
 /* Modal Styles */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.modal { background: white; width: 100%; max-width: 500px; border-radius: var(--radius-xl); box-shadow: var(--shadow-md); overflow: hidden; }
+.modal { background: var(--color-bg-card); width: 100%; max-width: 500px; border-radius: var(--radius-xl); box-shadow: var(--shadow-md); overflow: hidden; }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; }
 .modal-header h3 { font-size: 18px; }
 .close-btn { background: transparent; border: none; color: var(--color-text-disabled); cursor: pointer; }

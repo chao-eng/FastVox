@@ -18,8 +18,14 @@ const router = useRouter();
 const route = useRoute();
 const isCollapsed = ref(false);
 const userName = ref('Guest');
+const isDark = ref(localStorage.getItem('theme') === 'dark');
 
+// 初始化主题
 onMounted(async () => {
+  if (isDark.value) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+
   try {
     const user: any = await client.get('/users/me');
     userName.value = user.nickname || user.email;
@@ -27,6 +33,17 @@ onMounted(async () => {
     console.error('Failed to fetch user:', err);
   }
 });
+
+const toggleTheme = () => {
+  isDark.value = !isDark.value;
+  const theme = isDark.value ? 'dark' : 'light';
+  localStorage.setItem('theme', theme);
+  if (isDark.value) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+};
 
 const navItems = [
   { name: '语音合成', path: '/', icon: MessageSquare },
@@ -78,7 +95,10 @@ const handleLogout = () => {
           {{ navItems.find(i => i.path === route.path)?.name || '系统' }}
         </div>
         <div class="user">
-          <button class="theme-toggle"><Sun :size="18" /></button>
+          <button class="theme-toggle" @click="toggleTheme">
+            <Sun v-if="!isDark" :size="18" />
+            <Moon v-else :size="18" />
+          </button>
           <div class="user-profile" :title="userName">
             <div class="avatar-circle">
               {{ userName.charAt(0).toUpperCase() }}
@@ -110,7 +130,7 @@ const handleLogout = () => {
 
 .sidebar {
   width: 240px;
-  background-color: white;
+  background-color: var(--color-bg-card);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -176,7 +196,7 @@ const handleLogout = () => {
 
 .header {
   height: 60px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-bg-card);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--color-border);
   display: flex;
@@ -191,8 +211,8 @@ const handleLogout = () => {
 .theme-toggle { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; transition: color 0.2s; }
 .theme-toggle:hover { color: var(--color-primary); }
 
-.user-profile { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; background: #f4f5f7; border-radius: 20px; transition: all 0.2s; border: 1px solid transparent; cursor: default; }
-.user-profile:hover { background: #ebedf0; border-color: var(--color-border); }
+.user-profile { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; background: var(--color-bg-page); border-radius: 20px; transition: all 0.2s; border: 1px solid transparent; cursor: default; }
+.user-profile:hover { background: var(--color-border); border-color: var(--color-border); }
 
 .avatar-circle { width: 28px; height: 28px; background: var(--color-primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .user-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

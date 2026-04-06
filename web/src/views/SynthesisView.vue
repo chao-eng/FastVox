@@ -234,7 +234,7 @@ onMounted(fetchVoices);
 <style scoped>
 .synthesis { width: 100%; max-width: 1200px; margin: 0 auto; }
 .container { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; }
-.card { background: white; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm); margin-bottom: 24px; }
+.card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm); margin-bottom: 24px; }
 .card h3 { font-size: 16px; margin-bottom: 16px; color: var(--color-text-primary); }
 .editor-card { display: flex; flex-direction: column; min-height: 400px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

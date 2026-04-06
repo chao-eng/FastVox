@@ -87,7 +87,7 @@ onMounted(async () => {
 .stats { width: 100%; }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
 
-.stat-card { background: white; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm); }
+.stat-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm); }
 .stat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .icon-circle { width: 40px; height: 40px; border-radius: 50%; background: var(--color-primary-light); color: var(--color-primary); display: flex; align-items: center; justify-content: center; }
 .change { font-size: 12px; font-weight: 600; color: var(--color-success); background: #E1F7EA; padding: 2px 8px; border-radius: 4px; }
@@ -95,7 +95,7 @@ onMounted(async () => {
 .stat-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
 .stat-name { font-size: 14px; color: var(--color-text-secondary); font-weight: var(--font-weight-light); }
 
-.chart-card { background: white; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; min-height: 300px; }
+.chart-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; min-height: 300px; }
 .chart-card h3 { font-size: 16px; margin-bottom: 24px; }
 .chart-container { display: flex; gap: 16px; margin-top: 10px; }
 .y-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--color-text-secondary); padding-bottom: 30px; /* offset for x-axis */ text-align: right; min-width: 20px; }

@@ -42,9 +42,9 @@ import BaseButton from '../components/ui/BaseButton.vue';
 .header h2 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 .header p { color: var(--color-text-secondary); font-size: 14px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
-.card { background: white; padding: 24px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: var(--shadow-sm); }
+.card { background: var(--color-bg-card); padding: 24px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: var(--shadow-sm); }
 .card-title { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; font-weight: 600; color: var(--color-text-primary); }
 .field { margin-bottom: 20px; }
 .field label { display: block; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px; }
-.input { width: 100%; height: 36px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 12px; outline: none; }
+.input { width: 100%; height: 36px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 12px; outline: none; background: var(--color-bg-card); color: var(--color-text-primary); }
 </style>

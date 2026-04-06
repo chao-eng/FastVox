@@ -50,15 +50,32 @@ onMounted(async () => {
     <div class="charts-row">
       <div class="chart-card">
         <h3>每分钟实时推理吞吐量 (Requests/min)</h3>
-        <div class="chart-box">
-          <div class="mock-bars">
-            <div 
-              v-for="(val, idx) in throughput" 
-              :key="idx" 
-              class="bar" 
-              :style="{ height: (val / Math.max(...throughput, 1) * 100) + '%' }"
-              :title="`${val} reqs`"
-            ></div>
+        <div class="chart-container">
+          <!-- Y 轴单位 -->
+          <div class="y-axis">
+            <span>{{ Math.max(...throughput, 5) }}</span>
+            <span>{{ Math.floor(Math.max(...throughput, 5) / 2) }}</span>
+            <span>0</span>
+          </div>
+          
+          <div class="chart-main">
+            <div class="chart-box">
+              <div class="mock-bars">
+                <div 
+                  v-for="(val, idx) in throughput" 
+                  :key="idx" 
+                  class="bar" 
+                  :style="{ height: (val / Math.max(...throughput, 1) * 100) + '%' }"
+                  :title="`${val} reqs`"
+                ></div>
+              </div>
+            </div>
+            <!-- X 轴单位 -->
+            <div class="x-axis">
+              <span>20min 前</span>
+              <span>10min 前</span>
+              <span>现在</span>
+            </div>
           </div>
         </div>
       </div>
@@ -80,9 +97,13 @@ onMounted(async () => {
 
 .chart-card { background: white; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; min-height: 300px; }
 .chart-card h3 { font-size: 16px; margin-bottom: 24px; }
+.chart-container { display: flex; gap: 16px; margin-top: 10px; }
+.y-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--color-text-secondary); padding-bottom: 30px; /* offset for x-axis */ text-align: right; min-width: 20px; }
+.chart-main { flex: 1; display: flex; flex-direction: column; }
+.x-axis { display: flex; justify-content: space-between; padding-top: 8px; font-size: 11px; color: var(--color-text-secondary); border-top: 1px solid var(--color-border); }
 
-.chart-box { height: 200px; display: flex; align-items: flex-end; padding-top: 20px; }
-.mock-bars { flex: 1; height: 100%; display: flex; align-items: flex-end; gap: 8px; border-bottom: 1px solid var(--color-border); }
-.bar { flex: 1; background: var(--color-primary); border-radius: 4px 4px 0 0; opacity: 0.8; transition: height 1s ease; }
+.chart-box { height: 200px; display: flex; align-items: flex-end; }
+.mock-bars { flex: 1; height: 100%; display: flex; align-items: flex-end; gap: 8px; }
+.bar { flex: 1; background: var(--color-primary); border-radius: 4px 4px 0 0; opacity: 0.8; transition: height 1.0s cubic-bezier(0.4, 0, 0.2, 1); }
 .bar:hover { opacity: 1; }
 </style>

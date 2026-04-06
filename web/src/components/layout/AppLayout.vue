@@ -26,6 +26,11 @@ const navItems = [
 
 const navigate = (path: string) => router.push(path);
 const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;
+
+const handleLogout = () => {
+  localStorage.removeItem('fastvox_token');
+  router.push('/login');
+};
 </script>
 
 <template>
@@ -64,6 +69,9 @@ const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;
         <div class="user">
           <button class="theme-toggle"><Sun :size="18" /></button>
           <div class="avatar">U</div>
+          <button class="logout-btn" title="退出登录" @click="handleLogout">
+            <LogOut :size="18" />
+          </button>
         </div>
       </header>
 
@@ -164,6 +172,8 @@ const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;
 .user { display: flex; align-items: center; gap: 16px; }
 .theme-toggle { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; }
 .avatar { width: 32px; height: 32px; background: #E5E6EB; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+.logout-btn { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s; padding: 4px; border-radius: 4px; }
+.logout-btn:hover { color: #F53F3F; background: #FFF1F0; }
 
 .page-content { flex: 1; padding: 32px; overflow-y: auto; max-width: 1200px; width: 100%; margin: 0 auto; }
 </style>

@@ -1,11 +1,12 @@
 import uuid
 import logging
 import asyncio
+import time
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-from app.db.engine import VoiceProfile, User, get_session
+from app.db.engine import VoiceProfile, User, UsageLog, get_session
 from app.auth.manager import fastapi_users, get_user_manager, UserManager, auth_backend
 from app.core.slot_manager import SlotManager
 from app.core.worker_pool import WorkerPool, InferenceTask
@@ -44,6 +45,8 @@ async def tts_stream(
     
     request_id = uuid.uuid4().hex[:8]
     slot_id = -1
+    start_time = time.time()  # 记录开始时间以计算时延
+    total_pcm_bytes = 0      # 记录总 PCM 字节量以计算音频时长
     
     # 优先从 FastAPI 状态获取
     app_slot_manager = websocket.app.state.slot_manager if hasattr(websocket.app, "state") else container.slot_manager
@@ -117,6 +120,7 @@ async def tts_stream(
                 continue
 
             pcm_data = shm_manager.read_from_slot(slot_id, offset_in_slot=0, size=data_size)
+            total_pcm_bytes += len(pcm_data) # 累加数据量
             
             # 使用有状态编码器进行 Opus 编码 (持续追加到同一个 Ogg 容器)
             chunk = encoder.encode_chunk(pcm_data)
@@ -138,6 +142,25 @@ async def tts_stream(
 
         # 结束信号 (空分片)
         await websocket.send_bytes(b"")
+
+        # 4. 记录使用统计 (非阻塞写入)
+        try:
+            # 计算时长 (ms): bytes / 2 (16bit) / 24000 (rate) * 1000
+            audio_duration_ms = int(total_pcm_bytes / 2 / 24000 * 1000)
+            inference_latency_ms = int((time.time() - start_time) * 1000)
+
+            usage = UsageLog(
+                user_id=user.id,
+                text_length=len(target_text),
+                voice_id=uuid.UUID(voice_id) if voice_id else None,
+                duration_ms=audio_duration_ms,
+                latency_ms=inference_latency_ms,
+                status="success"
+            )
+            session.add(usage)
+            await session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to log usage: {e}")
 
     except WebSocketDisconnect:
         logger.info(f"Client disconnected: {request_id}")

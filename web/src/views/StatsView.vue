@@ -1,13 +1,34 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue';
 import { BarChart, Clock, Database, TrendingUp, Activity } from 'lucide-vue-next';
+import client from '../api/client';
 
-// 模拟统计数据
-const stats = [
-  { name: '累计合成字数', value: '142.8k', change: '+12%', icon: Database },
-  { name: '平均推理时延', value: '420ms', change: '-5%', icon: Clock },
-  { name: '已存声纹模型', value: '12', change: '+2', icon: Activity },
-  { name: '今日实时请求', value: '2.4k', change: '+18%', icon: TrendingUp },
-];
+// 动态统计数据
+const stats = ref([
+  { name: '累计合成字数', value: '0', change: '+0%', icon: Database },
+  { name: '平均推理时延', value: '0.00s', change: '+0%', icon: Clock },
+  { name: '服务成功率', icon: Activity },
+  { name: '今日实时请求', value: '0', change: '+0%', icon: TrendingUp },
+]);
+
+const throughput = ref<number[]>([]);
+
+const iconMap: any = { Database, Clock, Activity, TrendingUp };
+
+onMounted(async () => {
+  try {
+    const summary: any = await client.get('/stats/summary');
+    stats.value = (summary as any).stats.map((s: any) => ({
+      ...s,
+      icon: iconMap[s.icon] || BarChart
+    }));
+
+    const tp: any = await client.get('/stats/throughput');
+    throughput.value = (tp as any).data;
+  } catch (err) {
+    console.error('Failed to fetch stats:', err);
+  }
+});
 </script>
 
 <template>
@@ -25,13 +46,19 @@ const stats = [
       </div>
     </div>
 
-    <!-- 模拟图表区 -->
+    <!-- 吞吐量图表 -->
     <div class="charts-row">
       <div class="chart-card">
-        <h3>每秒实时推理吞吐量 (Requests/s)</h3>
+        <h3>每分钟实时推理吞吐量 (Requests/min)</h3>
         <div class="chart-box">
           <div class="mock-bars">
-            <div v-for="n in 20" :key="n" class="bar" :style="{ height: Math.random()*100 + '%' }"></div>
+            <div 
+              v-for="(val, idx) in throughput" 
+              :key="idx" 
+              class="bar" 
+              :style="{ height: (val / Math.max(...throughput, 1) * 100) + '%' }"
+              :title="`${val} reqs`"
+            ></div>
           </div>
         </div>
       </div>

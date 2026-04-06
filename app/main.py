@@ -21,6 +21,7 @@ from app.core.uds_protocol import UDSServer
 # 导入 API 路由器
 from app.api.voice import router as voice_router
 from app.api.tts import router as tts_router, container
+from app.api.stats import router as stats_router
 
 settings = get_settings()
 logger = logging.getLogger("FastVox")
@@ -123,6 +124,7 @@ app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/v1/
 app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(voice_router, prefix="/api/v1")
 app.include_router(tts_router, prefix="/api/v1")
+app.include_router(stats_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Monitoring"])
 async def health_check():

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { Play, Download, Mic, Trash2, Send } from 'lucide-vue-next';
+import { Play, Download, Mic, Trash2, Send, Volume2 } from 'lucide-vue-next';
 import BaseButton from '../components/ui/BaseButton.vue';
 import client from '../api/client';
 
@@ -21,10 +21,31 @@ let audioChunkQueue: Uint8Array[] = [];
 const maxTextLength = 500;
 const textLength = computed(() => text.value.length);
 const isTextOverLimit = computed(() => textLength.value > maxTextLength);
+const currentVoice = computed(() => voices.value.find(v => v.id === voiceId.value));
+const isPreviewPlaying = ref(false);
+let previewAudio: HTMLAudioElement | null = null;
 
 const fetchVoices = async () => {
   voices.value = await client.get('/voice/list');
-  if (voices.value.length > 0) voiceId.value = voices.value[0].id;
+  if (voices.value.length > 0 && !voiceId.value) voiceId.value = voices.value[0].id;
+};
+
+const toggleVoicePreview = () => {
+  if (isPreviewPlaying.value) {
+    previewAudio?.pause();
+    isPreviewPlaying.value = false;
+    return;
+  }
+
+  if (!voiceId.value) return;
+
+  const url = `/api/voice/${voiceId.value}/audio?token=${localStorage.getItem('fastvox_token')}`;
+  previewAudio = new Audio(url);
+  previewAudio.play();
+  isPreviewPlaying.value = true;
+  previewAudio.onended = () => {
+    isPreviewPlaying.value = false;
+  };
 };
 
 const handleSynthesize = () => {
@@ -169,10 +190,24 @@ onMounted(fetchVoices);
         <div class="card settings-card">
           <h3>推理参数</h3>
           <div class="field">
-            <label>选择声纹</label>
+            <div class="label-row">
+              <label>选择声纹</label>
+              <BaseButton 
+                v-if="voiceId" 
+                type="text" 
+                size="sm" 
+                :class="['preview-btn', { playing: isPreviewPlaying }]" 
+                @click="toggleVoicePreview"
+              >
+                <Volume2 :size="14" /> {{ isPreviewPlaying ? '停止试听' : '试听原声' }}
+              </BaseButton>
+            </div>
             <select v-model="voiceId" class="select">
               <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.name }}</option>
             </select>
+            <div v-if="currentVoice" class="voice-hint">
+              <strong>参考文本：</strong>{{ currentVoice.prompt_text }}
+            </div>
           </div>
           <div class="field">
             <div class="label-row">
@@ -245,8 +280,13 @@ onMounted(fetchVoices);
 .settings-card .field { margin-bottom: 20px; }
 .settings-card label { display: block; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px; font-weight: 500; }
 .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.select { width: 100%; height: 36px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 12px; outline: none; }
-.slider { width: 100%; -webkit-appearance: none; height: 4px; background: var(--color-border); border-radius: 2px; }
+.select { width: 100%; height: 36px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 12px; outline: none; background: var(--color-bg-card); color: var(--color-text-primary); }
+.voice-hint { margin-top: 8px; font-size: 12px; color: var(--color-text-secondary); line-height: 1.4; padding: 8px; background: var(--color-bg-page); border-radius: 4px; border-left: 3px solid var(--color-primary); }
+.voice-hint strong { color: var(--color-text-primary); margin-right: 4px; }
+.preview-btn { padding: 0; height: auto; font-size: 12px; }
+.preview-btn.playing { color: var(--color-primary); font-weight: 600; }
+
+.slider { width: 100%; -webkit-appearance: none; appearance: none; height: 4px; background: var(--color-border); border-radius: 2px; }
 .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: var(--color-primary); border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.1); }
 .player-card { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .placeholder { color: var(--color-text-disabled); }

@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.db.engine import VoiceProfile, User, get_session
-from app.auth.manager import current_active_user
+from app.auth.manager import current_active_user, auth_backend, get_user_manager, UserManager, fastapi_users
 from config.settings import get_settings
 import av
 import io
@@ -144,6 +144,7 @@ async def list_voices(
         {
             "id": p.id, 
             "name": p.name, 
+            "prompt_text": p.prompt_text,
             "duration_sec": p.duration_ms / 1000, 
             "created_at": p.created_at
         } for p in profiles
@@ -181,10 +182,19 @@ async def delete_voice(
 @router.get("/{voice_id}/audio")
 async def get_voice_audio(
     voice_id: uuid.UUID,
-    user: User = Depends(current_active_user),
+    token: str = None,
+    user: User = Depends(fastapi_users.current_user(optional=True)),
+    user_manager: UserManager = Depends(get_user_manager),
     session: AsyncSession = Depends(get_session)
 ):
-    """获取原音频文件进行试听"""
+    """获取原音频文件进行试听 (支持 Query Token 鉴权)"""
+    # 如果 header 中没有 user，尝试从 token query param 解析
+    if not user and token:
+        strategy = auth_backend.get_strategy()
+        user = await strategy.read_token(token, user_manager)
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="未授权访问，请登录")
     statement = select(VoiceProfile).where(
         VoiceProfile.id == voice_id, 
         VoiceProfile.user_id == user.id

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     
     # 身份认证
     jwt_secret: str = "change-me-in-production"
-    jwt_lifetime_seconds: int = 3600
+    jwt_lifetime_seconds: int = 604800 # 7 天 (7 * 24 * 3600)
     
     # 微信登录适配
     wechat_app_id: str = ""

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { 
   MessageSquare, 
@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sun,
-  Moon
+  Moon,
+  Users
 } from 'lucide-vue-next';
 import client from '../../api/client';
 
@@ -18,6 +19,7 @@ const router = useRouter();
 const route = useRoute();
 const isCollapsed = ref(false);
 const userName = ref('Guest');
+const isSuperuser = ref(false);
 const isDark = ref(localStorage.getItem('theme') === 'dark');
 
 // 初始化主题
@@ -28,7 +30,9 @@ onMounted(async () => {
 
   try {
     const user: any = await client.get('/users/me');
+    console.log('Current user:', user);
     userName.value = user.nickname || user.email;
+    isSuperuser.value = !!user.is_superuser;
   } catch (err) {
     console.error('Failed to fetch user:', err);
   }
@@ -45,12 +49,23 @@ const toggleTheme = () => {
   }
 };
 
-const navItems = [
-  { name: '语音合成', path: '/', icon: MessageSquare },
-  { name: '我的声纹', path: '/voices', icon: Mic2 },
-  { name: '使用统计', path: '/stats', icon: BarChart2 },
-  { name: '系统设置', path: '/settings', icon: Settings2 },
-];
+const navItems = computed(() => {
+  const base = [
+    { name: '语音合成', path: '/', icon: MessageSquare },
+  ];
+  
+  if (isSuperuser.value) {
+    return [
+      ...base,
+      { name: '声纹管理', path: '/voices', icon: Mic2 },
+      { name: '用户管理', path: '/users', icon: Users },
+      { name: '使用统计', path: '/stats', icon: BarChart2 },
+      { name: '系统设置', path: '/settings', icon: Settings2 },
+    ];
+  }
+  
+  return base;
+});
 
 const navigate = (path: string) => router.push(path);
 const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;

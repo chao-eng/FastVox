@@ -5,7 +5,7 @@ import time
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select
+from sqlmodel import select, or_
 from app.db.engine import VoiceProfile, User, UsageLog, get_session
 from app.auth.manager import fastapi_users, get_user_manager, UserManager, auth_backend
 from app.core.slot_manager import SlotManager
@@ -66,7 +66,10 @@ async def tts_stream(
         prompt_audio, prompt_text = None, None
         if voice_id:
             profile_id = uuid.UUID(voice_id)
-            statement = select(VoiceProfile).where(VoiceProfile.id == profile_id, VoiceProfile.user_id == user.id)
+            statement = select(VoiceProfile).where(
+                VoiceProfile.id == profile_id, 
+                or_(VoiceProfile.user_id == user.id, VoiceProfile.is_public == True)
+            )
             result = await session.execute(statement)
             profile = result.scalar_one_or_none()
             if profile:

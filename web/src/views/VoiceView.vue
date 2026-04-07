@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X, Play, Pause } from 'lucide-vue-next';
+import { Plus, Mic, Trash2, Calendar, FileText, UploadCloud, X, Play, Pause, Package } from 'lucide-vue-next';
 import BaseButton from '../components/ui/BaseButton.vue';
 import client from '../api/client';
 
@@ -9,6 +9,10 @@ const showModal = ref(false);
 const voices = ref<any[]>([]);
 const isUploading = ref(false);
 const isDragOver = ref(false);
+const isSuperuser = ref(false);
+const showBatchModal = ref(false);
+const batchFileInput = ref<HTMLInputElement | null>(null);
+const batchFile = ref<File | null>(null);
 
 const audio = new Audio();
 const currentlyPlaying = ref<string | null>(null);
@@ -25,6 +29,10 @@ const fetchVoices = async () => {
   try {
     const data: any = await client.get('/voice/list');
     voices.value = data;
+    
+    // 获取当前用户权限以判断是否可编辑公开属性
+    const user: any = await client.get('/users/me');
+    isSuperuser.value = !!user.is_superuser;
   } catch (err) { console.error('Failed to fetch voices:', err); }
 };
 
@@ -83,6 +91,39 @@ const handleUpload = async () => {
   }
 };
 
+const handleBatchFileChange = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    batchFile.value = target.files[0];
+  }
+};
+
+const handleBatchUpload = async () => {
+  if (!batchFile.value) {
+    alert('请选择 ZIP 压缩包');
+    return;
+  }
+  isUploading.value = true;
+  
+  const formData = new FormData();
+  formData.append('file', batchFile.value);
+
+  try {
+    const res: any = await client.post('/voice/batch', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    alert(`批量导入成功！\n成功：${res.success_count}，失败：${res.error_count}`);
+    showBatchModal.value = false;
+    batchFile.value = null;
+    fetchVoices();
+  } catch (err: any) { 
+    const msg = err.response?.data?.detail || '批量导入失败';
+    alert(msg); 
+  } finally { 
+    isUploading.value = false; 
+  }
+};
+
 const deleteVoice = async (id: string) => {
   if (!confirm('确定删除该声纹吗？')) return;
   try {
@@ -90,6 +131,16 @@ const deleteVoice = async (id: string) => {
     fetchVoices();
   } catch (err) {
     alert('删除失败');
+  }
+};
+
+const handleTogglePublic = async (voice: any) => {
+  if (!isSuperuser.value) return;
+  try {
+    await client.patch(`/voice/${voice.id}?is_public=${!voice.is_public}`);
+    voice.is_public = !voice.is_public;
+  } catch (err) {
+    alert('修改失败');
   }
 };
 
@@ -140,9 +191,14 @@ onMounted(fetchVoices);
         <h2>声纹管理</h2>
         <p>上传 3s-30s 参考音频以执行 In-context Learning 合成</p>
       </div>
-      <BaseButton type="primary" size="md" @click="showModal = true">
-        <Plus :size="16" /> 新增声纹
-      </BaseButton>
+      <div class="actions">
+        <BaseButton type="secondary" size="md" @click="showBatchModal = true" style="margin-right: 12px;">
+          <Package :size="16" /> 批量导入
+        </BaseButton>
+        <BaseButton type="primary" size="md" @click="showModal = true">
+          <Plus :size="16" /> 新增声纹
+        </BaseButton>
+      </div>
     </div>
 
     <div class="voice-grid">
@@ -169,10 +225,26 @@ onMounted(fetchVoices);
         </div>
 
         <div class="card-footer">
-          <div class="meta"><Calendar :size="14" /> {{ new Date(v.created_at).toLocaleTimeString() }}</div>
-          <BaseButton type="text" size="sm" class="delete-btn" @click="deleteVoice(v.id)">
-            <Trash2 :size="14" />
-          </BaseButton>
+          <div class="meta">
+            <Calendar :size="14" /> {{ new Date(v.created_at).toLocaleDateString() }}
+            <span v-if="v.is_public" class="badge public">公开</span>
+            <span v-else class="badge private">私有</span>
+          </div>
+          <div class="footer-actions">
+            <BaseButton 
+              v-if="isSuperuser"
+              type="text" 
+              size="sm" 
+              class="toggle-public-btn"
+              @click="handleTogglePublic(v)"
+              :title="v.is_public ? '修改为私有' : '修改为公开'"
+            >
+              {{ v.is_public ? '设为私有' : '设为公开' }}
+            </BaseButton>
+            <BaseButton v-if="v.is_owner" type="text" size="sm" class="delete-btn" @click="deleteVoice(v.id)">
+              <Trash2 :size="14" />
+            </BaseButton>
+          </div>
         </div>
       </div>
 
@@ -233,6 +305,50 @@ onMounted(fetchVoices);
         </div>
       </div>
     </Teleport>
+    <!-- 批量上传弹窗 -->
+    <Teleport to="body">
+      <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>批量导入声纹</h3>
+            <button class="close-btn" @click="showBatchModal = false"><X :size="20" /></button>
+          </div>
+          <div class="modal-body">
+            <div class="batch-guide">
+              <p>请上传包含以下内容的 ZIP 压缩包：</p>
+              <ul>
+                <li><strong>metadata.json</strong>: 包含 filename, name, prompt_text 的列表</li>
+                <li>音频文件: 与 metadata.json 中对应的 wav/mp3 文件</li>
+              </ul>
+            </div>
+
+            <input 
+              ref="batchFileInput"
+              type="file" 
+              style="display: none" 
+              accept=".zip" 
+              @change="handleBatchFileChange" 
+            />
+
+            <div 
+              class="drop-zone" 
+              :class="{ active: batchFile }"
+              @click="batchFileInput?.click()"
+            >
+              <Package v-if="!batchFile" :size="48" stroke-width="1" />
+              <FileText v-else :size="48" stroke-width="1" class="file-icon" />
+              
+              <p v-if="!batchFile">点击选择 ZIP 压缩包</p>
+              <p v-else class="file-name">{{ batchFile.name }}</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <BaseButton @click="showBatchModal = false">取消</BaseButton>
+            <BaseButton type="primary" :loading="isUploading" @click="handleBatchUpload">提交导入</BaseButton>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -267,6 +383,16 @@ onMounted(fetchVoices);
 .meta { font-size: 12px; color: var(--color-text-disabled); display: flex; align-items: center; gap: 4px; }
 .delete-btn { color: var(--color-text-disabled); }
 .delete-btn:hover { color: var(--color-danger); }
+
+.toggle-public-btn { color: var(--color-primary); font-size: 11px; }
+
+.badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; margin-left: 8px;
+}
+.badge.public { background: #E8FFFB; color: #00B42A; }
+.badge.private { background: #F5F5F5; color: var(--color-text-disabled); }
+
+.footer-actions { display: flex; align-items: center; gap: 8px; }
 
 .play-preview-btn {
   margin-left: auto; width: 32px; height: 32px; 
@@ -316,4 +442,20 @@ onMounted(fetchVoices);
 .limit { font-size: 11px; }
 
 .modal-footer { padding: 16px 24px; background: var(--color-bg-page); display: flex; justify-content: flex-end; gap: 12px; }
+
+.batch-guide {
+  background: var(--color-bg-page);
+  padding: 16px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.batch-guide ul {
+  margin-top: 8px;
+  padding-left: 20px;
+}
+.batch-guide li {
+  margin-bottom: 4px;
+}
 </style>

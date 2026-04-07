@@ -12,6 +12,7 @@ const hasReceivedData = ref(false);
 const audioChunks = ref<Uint8Array[]>([]); // 修改：提升为响应式 ref 供模板使用
 const audioUrl = ref<string | null>(null);
 const voices = ref<any[]>([]);
+const isSuperuser = ref(false);
 
 // 流式播放管理器
 let mediaSource: MediaSource | null = null;
@@ -28,6 +29,11 @@ let previewAudio: HTMLAudioElement | null = null;
 const fetchVoices = async () => {
   voices.value = await client.get('/voice/list');
   if (voices.value.length > 0 && !voiceId.value) voiceId.value = voices.value[0].id;
+  
+  try {
+    const user: any = await client.get('/users/me');
+    isSuperuser.value = !!user.is_superuser;
+  } catch (err) { console.error('Failed to fetch user info:', err); }
 };
 
 const toggleVoicePreview = () => {
@@ -226,7 +232,9 @@ onMounted(fetchVoices);
               </BaseButton>
             </div>
             <select v-model="voiceId" class="select">
-              <option v-for="v in voices" :key="v.id" :value="v.id">{{ v.name }}</option>
+              <option v-for="v in voices" :key="v.id" :value="v.id">
+                {{ v.name }}{{ isSuperuser && v.is_public && !v.is_owner ? ' [公开]' : '' }}
+              </option>
             </select>
             <div v-if="currentVoice" class="voice-hint">
               <strong>参考文本：</strong>{{ currentVoice.prompt_text }}

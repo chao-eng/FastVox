@@ -30,6 +30,7 @@ class VoiceProfile(SQLModel, table=True):
     prompt_text: str # 参考文本
     sample_rate: int = 24000
     duration_ms: int = 0
+    is_public: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class UsageLog(SQLModel, table=True):

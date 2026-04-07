@@ -20,17 +20,26 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: 'voices',
         name: 'Voices',
-        component: () => import('../views/VoiceView.vue')
+        component: () => import('../views/VoiceView.vue'),
+        meta: { requiresAdmin: true }
       },
       {
         path: 'stats',
         name: 'Stats',
-        component: () => import('../views/StatsView.vue')
+        component: () => import('../views/StatsView.vue'),
+        meta: { requiresAdmin: true }
       },
       {
         path: 'settings',
         name: 'Settings',
-        component: () => import('../views/SettingsView.vue')
+        component: () => import('../views/SettingsView.vue'),
+        meta: { requiresAdmin: true }
+      },
+      {
+        path: 'users',
+        name: 'Users',
+        component: () => import('../views/UsersView.vue'),
+        meta: { requiresAdmin: true }
       }
     ]
   }
@@ -41,11 +50,34 @@ const router = createRouter({
   routes
 });
 
-// 简单的路由守卫 (此处可集成 Token 校验)
-router.beforeEach((to, from, next) => {
-  const isAuthenticated = true; // 模拟已登录
-  if (to.name !== 'Login' && !isAuthenticated) next({ name: 'Login' });
-  else next();
+import client from '../api/client';
+
+// 路由守卫: 自动附带权限校验
+router.beforeEach(async (to, from, next) => {
+  const token = localStorage.getItem('fastvox_token');
+  
+  // 1. 登录跳转逻辑
+  if (to.name !== 'Login' && !token) {
+    return next({ name: 'Login' });
+  }
+  if (to.name === 'Login' && token) {
+    return next({ name: 'Synthesis' });
+  }
+
+  // 2. 权限校验逻辑 (Admin Required)
+  if (to.meta.requiresAdmin) {
+    try {
+      const user: any = await client.get('/users/me');
+      if (!user.is_superuser) {
+        alert('权限不足，仅管理员可访问同步页面');
+        return next({ name: 'Synthesis' });
+      }
+    } catch (err) {
+      return next({ name: 'Login' });
+    }
+  }
+
+  next();
 });
 
 export default router;

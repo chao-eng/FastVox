@@ -5,10 +5,11 @@ FastVox 是一款基于 `sherpa-onnx` 的高性能、低延迟流式语音合成
 ## 🚀 核心特性
 
 - **极致延迟**：基于 ZipVoice 模型与流式编码，实现“毫秒级”首字响应。
-- **现代 UI**：精美的飞书/Lark 风格极简设计，完美支持**暗黑模式**。
+- **共享声纹**：支持“公开”声纹属性。管理员可上传并共享声纹，普通用户可直接选用。
+- **角色管理**：支持管理员与普通用户角色。普通用户界面极简（仅保留语音合成功能）。
+- **批量导入**：支持通过 ZIP 压缩包 (metadata.json + 音频文件) 一键批量导入复杂声纹库。
 - **全栈统计**：实时监控推理吞吐量 (Requests/min)、合成字数与平均时延。
-- **声纹管理**：支持上传自定义小段音频快速提取声纹，实现个性化语音合成。
-- **流式架构**：后端 Python FastAPI + 前端 Vue 3，配合 WebSocket 实时流式传输。
+- **现代 UI**：精美的飞书/Lark 风格极简设计，完美支持**暗黑模式**。
 
 ---
 
@@ -26,43 +27,49 @@ FastVox 是一款基于 `sherpa-onnx` 的高性能、低延迟流式语音合成
 - **下载地址**：[vocos_24khz.onnx](https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx)
 - **说明**：解压后请将 `.onnx` 解析器放置于 `models/zipvoice/` 目录下。
 
-### 3. 说明与推荐声纹数据 (示例)
-如果你需要高质量的中文声纹参考素材，可以参考以下公开数据集：
-- **中文音源推荐**：[Genshin-Voice (simon3000)](https://huggingface.co/datasets/simon3000/genshin-voice/viewer/default/train?f%5Blanguage%5D%5Bvalue%5D=%27Chinese%27)
-- **提示**：在该数据集中挑选 5s-10s 的清晰录音作为声纹上传，效果最佳。
-
 ---
 
-## 📦 快速启动
+## 📦 快速启动 (Conda 环境)
 
-### 系统初始化
-1.  **后端安装**：
-    ```bash
-    pip install -r requirements.txt
-    ```
-2.  **前端安装**：
-    ```bash
-    cd web
-    npm install
-    ```
+为了确保环境隔离，建议使用 Conda 启动脚本。
 
-### 启动服务
-1.  **运行后端**：
-    ```bash
-    python -m app.main
-    ```
-2.  **开发环境前端**：
-    ```bash
-    npm run dev
-    ```
+### 1. 初始化环境
+该脚本将创建名为 `fastvox` 的隔离环境并安装所有 Python 依赖：
+```bash
+# 赋予执行权限并安装
+chmod +x scripts/setup_conda.sh
+./scripts/setup_conda.sh
+```
+
+### 2. 启动服务 (仅后端)
+该脚本将自动执行前端构建 (`npm build`) 并启动后端服务器：
+```bash
+chmod +x scripts/start.sh
+./scripts/start.sh
+```
+
+### 3. 重启服务
+如果代码发生变动，直接重启后端：
+```bash
+./scripts/restart.sh
+```
 
 ---
 
 ## 📸 界面预览
 
 - **语音合成**：实时流式预览，支持语速调节。
+- **用户管理 (管理员)**：管理员可创建普通账号，分配系统资源。
+- **声纹管理 (管理员)**：胶囊风格卡片管理，支持公开/私有属性切换、批量导入。
 - **使用统计**：动态图表，每分钟吞吐量实时可见。
-- **声纹管理**：胶囊风格卡片管理，支持在线试听与删除。
-- **系统设置**：支持全局暗黑模式一键切换。
 
 ---
+
+## 📝 许可条款 (License)
+
+本项目采用 **自定义非商业性许可**。
+
+1.  **开源不等于免费商用**：本软件仅供个人学习、科研、教学或非营利性目的使用。严禁将其用于任何形式的商业盈利行为。
+2.  **署名要求**：在任何展示或二次分发中，必须在显著位置标明项目出处：**"Powered by FastVox (https://github.com/guojc/FastVox)"**。
+
+详情请参阅项目根目录下的 [LICENSE](LICENSE) 文件。

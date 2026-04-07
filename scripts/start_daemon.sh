@@ -2,6 +2,8 @@
 
 # Configuration
 ENV_NAME="fastvox"
+# 自动切换到项目根目录
+cd "$(dirname "$0")/.."
 LOG_FILE="fastvox.log"
 
 echo "==== FastVox App Background Start Script ===="

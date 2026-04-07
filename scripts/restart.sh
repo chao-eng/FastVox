@@ -2,6 +2,8 @@
 
 # Configuration
 ENV_NAME="fastvox"
+# 自动切换到项目根目录
+cd "$(dirname "$0")/.."
 
 echo "==== FastVox App Restart Script ===="
 

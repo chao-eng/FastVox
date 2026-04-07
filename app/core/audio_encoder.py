@@ -21,11 +21,11 @@ class AudioEncoder:
             
         output_buf = io.BytesIO()
         try:
-            # 打开内存容器
-            output_container = av.open(output_buf, mode='w', format='webm')
+            # 使用 mp3 格式
+            output_container = av.open(output_buf, mode='w', format='mp3')
             
-            # 添加 Opus 编码流 (libopus)
-            stream = output_container.add_stream('libopus', rate=self.sample_rate)
+            # 添加 mp3 编码流
+            stream = output_container.add_stream('libmp3lame', rate=self.sample_rate)
             
             # 使用更健壮的方式设置比特率和声道布局
             bitrate_val = int(self.bitrate.replace('k', '')) * 1000
@@ -180,9 +180,9 @@ class StreamingEncoder:
         self.output_buf = io.BytesIO()
         self.pointer = 0
         
-        # 初始化 PyAV 容器
-        self.container = av.open(self.output_buf, mode='w', format='webm')
-        self.stream = self.container.add_stream('libopus', rate=self.sample_rate)
+        # 使用 mp3 格式以获得更好的编辑兼容性
+        self.container = av.open(self.output_buf, mode='w', format='mp3')
+        self.stream = self.container.add_stream('libmp3lame', rate=self.sample_rate)
         self.stream.codec_context.bit_rate = 64000
         self.stream.codec_context.layout = 'mono' if channels == 1 else 'stereo'
         self.stream.codec_context.sample_rate = sample_rate

@@ -84,7 +84,8 @@ const handleSynthesize = () => {
   mediaSource.addEventListener('sourceopen', () => {
     if (!mediaSource) return;
     try {
-      sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
+      // 修改为 MP3 格式以支持更多外部编辑器
+      sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
       
       // 关键修复：如果在 Buffer 就绪前已经有分片到达了队列，立刻喂入第一个分片触发更新循环
       if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
@@ -169,7 +170,7 @@ const handleSynthesize = () => {
 
     // 依然保留一个完整的 Blob 供后续“下载”使用
     if (audioChunks.value.length > 0) {
-      const fullBlob = new Blob(audioChunks.value as any, { type: 'audio/webm' });
+      const fullBlob = new Blob(audioChunks.value as any, { type: 'audio/mp3' });
       // 只有在不支持 MSE 或者需要持久化 URL 时才替换
       // 这里我们为了保持进度条能正常 seek，合成完后将 URL 替换为完整 Blob
       if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
@@ -187,7 +188,7 @@ const downloadAudio = () => {
   if (!audioUrl.value) return;
   const link = document.createElement('a');
   link.href = audioUrl.value;
-  link.download = `fastvox_${Date.now()}.webm`;
+  link.download = `fastvox_${Date.now()}.mp3`;
   link.click();
 };
 

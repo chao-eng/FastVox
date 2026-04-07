@@ -88,14 +88,14 @@ const handleSynthesize = () => {
       sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
       
       // 关键修复：如果在 Buffer 就绪前已经有分片到达了队列，立刻喂入第一个分片触发更新循环
-      if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
+      if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
         const firstChunk = audioChunkQueue.shift()!;
         sourceBuffer.appendBuffer(firstChunk.buffer as ArrayBuffer);
       }
 
       sourceBuffer.addEventListener('updateend', () => {
         // 当 Buffer 更新完成后，自动处理队列中的剩余数据
-        if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating) {
+        if (audioChunkQueue.length > 0 && sourceBuffer && !sourceBuffer.updating && mediaSource && mediaSource.readyState === 'open') {
           const nextChunk = audioChunkQueue.shift()!;
           sourceBuffer.appendBuffer(nextChunk.buffer as ArrayBuffer);
         }
@@ -136,7 +136,7 @@ const handleSynthesize = () => {
       hasReceivedData.value = true; // 标记已开始接收数据
 
       // 将分片送入 MSE Buffer
-      if (sourceBuffer && !sourceBuffer.updating && audioChunkQueue.length === 0) {
+      if (sourceBuffer && !sourceBuffer.updating && audioChunkQueue.length === 0 && mediaSource && mediaSource.readyState === 'open') {
         sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
       } else {
         audioChunkQueue.push(chunk);

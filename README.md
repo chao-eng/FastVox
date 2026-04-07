@@ -19,12 +19,12 @@ FastVox 是一款基于 `sherpa-onnx` 的高性能、低延迟流式语音合成
 ### 1. 核心 TTS 模型 (ZipVoice)
 本项目使用 ZipVoice 蒸馏量化版模型，兼顾速度与质量。
 - **下载地址**：[sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2](https://mirror.ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2)
-- **说明**：解压后请将 `.onnx` 模型放置于 `app/models/zipvoice/` 目录下。
+- **说明**：解压后请将 `.onnx` 模型放置于 `models/zipvoice/` 目录下。
 
 ### 2. 声学解析器 (Vocoder)
 用于将推理特征转化为 24khz 高质量音频。
 - **下载地址**：[vocos_24khz.onnx](https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx)
-- **说明**：解压后请将 `.onnx` 解析器放置于 `app/models/zipvoice/` 目录下。
+- **说明**：解压后请将 `.onnx` 解析器放置于 `models/zipvoice/` 目录下。
 
 ### 3. 说明与推荐声纹数据 (示例)
 如果你需要高质量的中文声纹参考素材，可以参考以下公开数据集：

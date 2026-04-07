@@ -21,4 +21,5 @@ fi
 
 # 2. Start backend
 echo "Detected conda environment '$ENV_NAME'. Starting FastVox backend..."
+export PYTHONPATH=$PYTHONPATH:.
 conda run -n $ENV_NAME python -m app.main

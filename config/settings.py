@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "FastVox"
     debug: bool = os.environ.get("DEBUG", "False").lower() == "true"
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8047
     
     # 推理参数 (ZipVoice Specific)
     model_dir: str = "./models/zipvoice"

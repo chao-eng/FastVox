@@ -13,12 +13,12 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8047',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api/v1'), // 转发到后端 API
       },
       '/ws': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8047',
         ws: true,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ws/, '/api/v1/tts/stream'), // 转发到后端 WebSocket

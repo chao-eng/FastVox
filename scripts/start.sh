@@ -20,6 +20,12 @@ else
 fi
 
 # 2. Start backend
+echo "Checking port 8047..."
+if lsof -Pi :8047 -sTCP:LISTEN -t >/dev/null ; then
+    echo "Error: Port 8047 is already in use. Please run scripts/restart.sh to kill old processes."
+    exit 1
+fi
+
 echo "Detected conda environment '$ENV_NAME'. Starting FastVox backend..."
 export PYTHONPATH=$PYTHONPATH:.
-conda run -n $ENV_NAME python -m app.main
+conda run --no-capture-output -n $ENV_NAME python -m app.main

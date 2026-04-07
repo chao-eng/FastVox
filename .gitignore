@@ -65,7 +65,9 @@ web/npm-debug.log*
 web/yarn-debug.log*
 web/yarn-error.log*
 web/pnpm-debug.log*
+web/package-lock.json
 
 # --- Deployment ---
 deploy/docker/data/
 deploy/docker/models/
+

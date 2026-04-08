@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     model_dir: str = "./models/zipvoice"
     num_workers: int = 2
     intra_op_threads: int = 1
-    zipvoice_num_steps: int = 4
+    zipvoice_num_steps: int = 6
     
     # 共享内存 (Ring Buffer)
     shm_name: str = "fastvox_shm_v8mb"

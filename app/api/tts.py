@@ -2,6 +2,7 @@ import uuid
 import logging
 import asyncio
 import time
+import numpy as np
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -147,12 +148,28 @@ async def tts_stream(
                 await websocket.send_bytes(chunk)
                 
             # --- 语境更新逻辑 (上下文衔接的核心) ---
-            # 下一段生成的 Prompt 文本即为当前段落的文本
-            current_prompt_text = segment
-            # 下一段生成的 Prompt 音频即为当前段落生成的音频 (保持 1:1 对齐以防止推理混乱)
-            current_prompt_audio_samples = pcm_data
-            # 有了实时采样语境后，不再需要之前的静态声纹路径
-            current_prompt_audio_path = None
+            # 先进行音频质量检测，防止乱码音频污染后续分段
+            ctx_samples = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)
+            rms_energy = np.sqrt(np.mean(ctx_samples ** 2)) if len(ctx_samples) > 0 else 0
+            peak = np.max(np.abs(ctx_samples)) if len(ctx_samples) > 0 else 0
+            
+            # 异常判定：静音 (RMS < 50) 或严重削波 (峰值持续顶满 ≈ 32767)
+            is_corrupted = rms_energy < 50 or (peak > 32700 and rms_energy > 20000)
+            
+            if is_corrupted:
+                logger.warning(
+                    f"Segment {i} audio quality check FAILED (RMS={rms_energy:.0f}, Peak={peak:.0f}). "
+                    f"Falling back to original voice profile to prevent context pollution."
+                )
+                # 回退到用户上传的原始声纹
+                current_prompt_text = prompt_text
+                current_prompt_audio_path = prompt_audio
+                current_prompt_audio_samples = None
+            else:
+                # 正常情况：下一段使用当前段的输出作为语境
+                current_prompt_text = segment
+                current_prompt_audio_samples = pcm_data
+                current_prompt_audio_path = None
                 
         # 刷出变速处理器中残留的 PCM 数据
         if tempo_processor:

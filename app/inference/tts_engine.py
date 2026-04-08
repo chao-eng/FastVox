@@ -1,6 +1,8 @@
 import numpy as np
 import logging
 import os
+import re
+import unicodedata
 from typing import Tuple, Optional
 from config.settings import get_settings
 
@@ -91,19 +93,72 @@ class TTSEngine:
         return re.sub(r'\d+', lambda x: _to_cn(x.group()), text)
 
     def _normalize_text(self, text: str) -> str:
-        """强化文本清理：数字转中文 + 符号清理"""
-        import re
-        # 1. 数字转换
+        """强化文本清理：去不可见字符 + 全角转半角 + 数字转中文 + 标点映射 + OOV过滤"""
+        
+        # --- 第 0 步：去除不可见 / 控制 Unicode 字符 ---
+        # 零宽空格 (U+200B)、BOM (U+FEFF)、零宽连接符 / 非连接符、软连字等
+        invisible_pattern = re.compile(
+            r'[\u200b\u200c\u200d\u200e\u200f'
+            r'\u00ad\ufeff\u2028\u2029'
+            r'\u202a-\u202e\u2060-\u2069]+'
+        )
+        text = invisible_pattern.sub('', text)
+        
+        # 去除 Unicode 控制字符 (Cc 类别)，保留换行和空格
+        text = ''.join(
+            ch for ch in text
+            if ch in ('\n', '\t', ' ') or unicodedata.category(ch) != 'Cc'
+        )
+        
+        # --- 第 1 步：全角英文字母 / 数字转半角 ---
+        result = []
+        for ch in text:
+            cp = ord(ch)
+            if 0xFF01 <= cp <= 0xFF5E:
+                result.append(chr(cp - 0xFEE0))
+            elif cp == 0x3000:
+                result.append(' ')
+            else:
+                result.append(ch)
+        text = ''.join(result)
+        
+        # --- 第 2 步：数字转中文 ---
         text = self._number_to_chinese(text)
         
-        # 2. 基础映射
+        # --- 第 3 步：中文标点全面映射 ---
         replacements = {
-            '“': ' ', '”': ' ', '‘': ' ', '’': ' ',
-            '《': ',', '》': ',', '（': '(', '）': ')',
-            '【': '[', '】': ']', '—': '-', '～': '~'
+            '\u201c': ' ', '\u201d': ' ',
+            '\u2018': ' ', '\u2019': ' ',
+            '\u300a': ',', '\u300b': ',',
+            '\uff08': '(', '\uff09': ')',
+            '\u3010': '[', '\u3011': ']',
+            '\u3008': ',', '\u3009': ',',
+            '\u300c': ',', '\u300d': ',',
+            '\u300e': ',', '\u300f': ',',
+            '\u2014': ',', '\u2013': ',',
+            '\uff5e': ',', '\u2026': ',',
+            '\u3001': ',',
+            '\u00b7': ' ', '\u2022': ' ',
+            '\u3002': '.',
+            '\uff01': '!', '\uff1f': '?',
+            '\uff0c': ',', '\uff1b': ';',
+            '\uff1a': ':',
         }
         for k, v in replacements.items():
             text = text.replace(k, v)
+        
+        # --- 第 4 步：清除 OOV 字符 ---
+        # 仅保留：CJK 基本区 + 扩展A、拉丁字母、空白、tokens.txt 中存在的标点
+        allowed_pattern = re.compile(
+            r'[\u4e00-\u9fff\u3400-\u4dbf'
+            r'a-zA-Z0-9\s'
+            r",.!?;:\-'()\[\]]"
+        )
+        text = ''.join(ch for ch in text if allowed_pattern.match(ch))
+        
+        # --- 第 5 步：压缩多余空格 ---
+        text = re.sub(r'\s+', ' ', text).strip()
+        
         return text
 
     def synthesize(self, 

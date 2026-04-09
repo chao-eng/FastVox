@@ -69,6 +69,12 @@ const handleUpload = async () => {
     alert('请填写名称并选择音频文件');
     return;
   }
+
+  // 1. 自动补充句号防止分词错误
+  if (form.value.prompt_text && !/[。！？；…\.!\?;]$/.test(form.value.prompt_text.trim())) {
+    form.value.prompt_text = form.value.prompt_text.trim() + '。';
+  }
+  
   isUploading.value = true;
   
   const formData = new FormData();

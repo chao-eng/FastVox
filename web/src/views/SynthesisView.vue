@@ -66,8 +66,13 @@ const formatDuration = (ms: number) => {
 
 const handleSynthesize = () => {
   if (!text.value || !voiceId.value) return;
+
+  // 1. 自动补充句号防止分词错误导致音频乱码
+  if (!/[。！？；…\.!\?;]$/.test(text.value.trim())) {
+    text.value = text.value.trim() + '。';
+  }
   
-  // 1. 初始化状态
+  // 2. 初始化状态
   isSynthesizing.value = true;
   hasReceivedData.value = false;
   totalDurationMs.value = 0; // 重置时长统计

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +9,7 @@ from app.db.engine import User, get_session, AppConfig
 from app.auth.manager import current_superuser, UserManager, get_user_manager
 from app.auth.schemas import UserRead, UserCreate
 
+logger = logging.getLogger("FastVox")
 router = APIRouter(prefix="/admin", tags=["Admin Management"])
 
 # --- 用户管理 ---
@@ -20,7 +22,9 @@ async def list_users(
     """管理员列出所有用户"""
     statement = select(User)
     result = await session.execute(statement)
-    return result.scalars().all()
+    users = result.scalars().all()
+    logger.info(f"Admin {admin.email} is listing {len(users)} users. Admin status: {admin.is_superuser}")
+    return users
 
 @router.post("/users", response_model=UserRead)
 async def create_user_by_admin(

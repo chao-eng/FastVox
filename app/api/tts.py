@@ -59,6 +59,10 @@ async def tts_stream(
         voice_id = data.get("voice_id")
         speed = float(data.get("speed", 1.0))
         
+        # 自动补全末尾标点 (有助于提升合成音质和语调收尾)
+        if target_text and not any(target_text.endswith(p) for p in ("。", "！", "？", "；", "…", ".", "!", "?", ";")):
+            target_text += "。"
+        
         if not target_text:
             await websocket.send_json({"error": "待合成文本不能为空"})
             return

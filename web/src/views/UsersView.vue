@@ -17,7 +17,7 @@ const form = ref({
 
 const fetchUsers = async () => {
   try {
-    const data: any = await client.get('/admin/users/');
+    const data: any = await client.get('/admin/users');
     users.value = data;
   } catch (err) {
     console.error('Failed to fetch users:', err);

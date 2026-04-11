@@ -68,6 +68,22 @@
 ]
 ```
 
+### 3.2 声纹试听（预览）
+获取原始声纹音频文件，用于在小程序端对比试听。
+
+- **URL**: `/voice/{voice_id}/audio`
+- **Method**: `GET`
+- **Query Params**:
+| 参数名 | 类型 | 必选 | 说明 |
+| :--- | :--- | :--- | :--- |
+| token | string | 否 | access_token (若 Header 未传则必传) |
+
+- **Header**: `Authorization: Bearer <TOKEN>` (可选，与 Query Token 二选一)
+- **Response**: `audio/wav` 二进制音频流。
+
+> [!TIP]
+> **使用场景**: 小程序端可以直接将此 URL 赋值给 `InnerAudioContext.src`。例如：`https://domain/api/v1/voice/ID/audio?token=...`
+
 ---
 
 ## 4. 语音合成接口 (核心)

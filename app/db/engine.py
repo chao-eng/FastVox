@@ -16,6 +16,7 @@ class User(SQLModel, table=True):
     hashed_password: str
     wechat_openid: Optional[str] = Field(default=None, unique=True, index=True)
     wechat_unionid: Optional[str] = Field(default=None, unique=True, index=True)
+    appid: Optional[str] = Field(default=None, index=True)
     nickname: str = "FastVox User"
     is_active: bool = True
     is_superuser: bool = False

@@ -29,6 +29,22 @@
 }
 ```
 
+### 2.2 Token 有效性检查
+用于小程序启动时判断本地存储的 Token 是否仍然有效。
+
+- **URL**: `/auth/wechat/check`
+- **Method**: `GET`
+- **Header**: `Authorization: Bearer <TOKEN>`
+- **Response (Valid)**:
+```json
+{
+  "status": "valid",
+  "user_id": "...",
+  "nickname": "..."
+}
+```
+- **Response (Invalid)**: HTTP 401 Unauthorized
+
 ---
 
 ## 3. 声纹管理接口

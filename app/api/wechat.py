@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from config.settings import get_settings
 from app.db.engine import User, get_session, AppConfig
-from app.auth.manager import get_user_manager, UserManager, auth_backend
+from app.auth.manager import get_user_manager, UserManager, auth_backend, current_active_user
 
 logger = logging.getLogger("FastVox")
 settings = get_settings()
@@ -121,4 +121,16 @@ async def wechat_login(
     return {
         "access_token": token,
         "token_type": "bearer"
+    }
+
+@router.get("/check")
+async def check_token(user: User = Depends(current_active_user)):
+    """
+    鉴权校验接口：如果 Token 有效且用户激活，返回用户信息。
+    小程序启动时可以用此接口判断是否需要重新登录。
+    """
+    return {
+        "status": "valid",
+        "user_id": user.id,
+        "nickname": user.nickname
     }

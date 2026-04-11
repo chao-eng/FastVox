@@ -44,6 +44,15 @@ class UsageLog(SQLModel, table=True):
     status: str = "success" # success/error/timeout
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class AppConfig(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    appid: str = Field(unique=True, index=True)
+    appsecret: str
+    app_name: Optional[str] = "Default Mini Program"
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 # --- 引擎与会话 ---
 
 engine = create_async_engine(settings.database_url, echo=settings.debug, future=True)

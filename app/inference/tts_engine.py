@@ -206,6 +206,9 @@ class TTSEngine:
             # 将 mx.array 类型的 result.audio 转换为 np.ndarray
             audio_samples = np.array(result.audio)
             
+            # 及时释放 mlx 显存缓存，防止内存因长时间运行而上涨
+            mx.clear_cache()
+            
             # 将 float32 格式的音频采样转换为 int16 PCM (mono)
             pcm = (audio_samples * 32767).astype(np.int16)
             pcm_bytes = pcm.tobytes()

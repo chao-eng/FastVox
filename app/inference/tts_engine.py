@@ -10,10 +10,10 @@ logger = logging.getLogger("FastVox")
 settings = get_settings()
 
 try:
-    import sherpa_onnx
-    import av
+    import mlx.core as mx
+    from mlx_audio.tts.utils import load as load_mlx_model
 except ImportError:
-    logger.error("Required libraries (sherpa-onnx or av) not installed.")
+    logger.error("Required libraries (mlx or mlx_audio) not installed.")
 
 class TTSInferenceError(Exception):
     """自定义推理异常"""
@@ -21,49 +21,32 @@ class TTSInferenceError(Exception):
 
 class TTSEngine:
     """
-    封装 sherpa-onnx 的 OfflineTts (ZipVoice 模式)
-    支持 In-context Learning (Speech Infilling)
+    封装 mlx_audio + k2-fsa/OmniVoice 模型的 TTS 引擎
+    支持 In-context Learning (Speech Infilling) 和零样本声纹克隆
     """
     
-    def __init__(self, model_dir: str, num_threads: int = 1, num_steps: int = 4):
-        self.model_dir = model_dir
+    def __init__(self, model_name: str, num_threads: int = 1, num_steps: int = 32):
+        self.model_name = model_name
         self.num_threads = num_threads
         self.num_steps = num_steps
-        self.tts: Optional[sherpa_onnx.OfflineTts] = None
+        self.model = None
         
         self._initialize_engine()
 
     def _initialize_engine(self):
         """初始化推理引擎"""
         try:
-            # 校验核心模型文件及其路径
-            # ZipVoice 关键模型文件清单: encoder.onnx, decoder.onnx, vocos_24khz.onnx
-            # tokens.txt, lexicon.txt, espeak-ng-data/
-            
-            # 构造配置
-            tts_config = sherpa_onnx.OfflineTtsConfig(
-                model=sherpa_onnx.OfflineTtsModelConfig(
-                    zipvoice=sherpa_onnx.OfflineTtsZipvoiceModelConfig(
-                        encoder=os.path.join(self.model_dir, "encoder.int8.onnx"),
-                        decoder=os.path.join(self.model_dir, "decoder.int8.onnx"),
-                        vocoder=os.path.join(self.model_dir, "vocos_24khz.onnx"),
-                        tokens=os.path.join(self.model_dir, "tokens.txt"),
-                        lexicon=os.path.join(self.model_dir, "lexicon.txt"),
-                        data_dir=os.path.join(self.model_dir, "espeak-ng-data"),
-                    ),
-                    num_threads=self.num_threads,
-                    debug=False,
-                    provider="cpu" # 默认 CPU 推理以兼容所有平台
-                ),
-                max_num_sentences=1,
-            )
-            
-            self.tts = sherpa_onnx.OfflineTts(tts_config)
-            logger.info(f"TTSEngine initialized from {self.model_dir}")
-            
+            logger.info(f"Loading mlx_audio model: {self.model_name}...")
+            # 使用 mlx_audio 标准高层加载函数
+            self.model = load_mlx_model(self.model_name)
+            logger.info(f"TTSEngine successfully initialized from {self.model_name}")
         except Exception as e:
-            logger.error(f"Failed to initialize sherpa-onnx engine: {e}")
+            logger.error(f"Failed to initialize mlx-audio engine: {e}")
             raise TTSInferenceError(f"Engine initialization failed: {e}")
+
+    def _has_chinese(self, text: str) -> bool:
+        """判断文本中是否包含中文字符"""
+        return any('\u4e00' <= char <= '\u9fff' for char in text)
 
     def _number_to_chinese(self, text: str) -> str:
         """将阿拉伯数字转换为中文念法"""
@@ -96,7 +79,6 @@ class TTSEngine:
         """强化文本清理：去不可见字符 + 全角转半角 + 数字转中文 + 标点映射 + OOV过滤"""
         
         # --- 第 0 步：去除不可见 / 控制 Unicode 字符 ---
-        # 零宽空格 (U+200B)、BOM (U+FEFF)、零宽连接符 / 非连接符、软连字等
         invisible_pattern = re.compile(
             r'[\u200b\u200c\u200d\u200e\u200f'
             r'\u00ad\ufeff\u2028\u2029'
@@ -148,7 +130,7 @@ class TTSEngine:
             text = text.replace(k, v)
         
         # --- 第 4 步：清除 OOV 字符 ---
-        # 仅保留：CJK 基本区 + 扩展A、拉丁字母、空白、tokens.txt 中存在的标点
+        # 仅保留：CJK 基本区 + 扩展A、拉丁字母、空白、标点以及允许非言语标签的方括号 []
         allowed_pattern = re.compile(
             r'[\u4e00-\u9fff\u3400-\u4dbf'
             r'a-zA-Z0-9\s'
@@ -166,15 +148,15 @@ class TTSEngine:
                   speed: float = 1.0,
                   prompt_audio: Optional[str] = None, 
                   prompt_text: Optional[str] = None,
-                  prompt_samples: Optional[bytes] = None # 新增：支持直接传入 PCM 字节流作为 Prompt
+                  prompt_samples: Optional[bytes] = None
                   ) -> Tuple[bytes, int]:
         """
-        进行流匹配语音合成 (Zero-shot Voice Cloning)
+        进行零样本声音克隆与流式上下文语音合成
         """
-        if not self.tts:
+        if not self.model:
             raise TTSInferenceError("Engine not initialized")
 
-        # 文本预处理 (去除 OOV 字符警告)
+        # 文本预处理
         text = self._normalize_text(text)
         if prompt_text:
             prompt_text = self._normalize_text(prompt_text)
@@ -182,51 +164,59 @@ class TTSEngine:
         logger.info(f"Begin synthesis for text: {text[:30]}...")
 
         try:
-            # 执行推理 (同步阻塞调用)
-            # 对于 ZipVoice，必须提供参考音色信息 (可以是文件路径，也可以是上一段生成的采样)
-            if (prompt_audio or prompt_samples) and prompt_text:
-                final_prompt_samples = []
-                
-                # 优先使用实时传入的采样 (Segment Context)
-                if prompt_samples:
-                    # 将 int16 字节流转换为 float32 常规采样，使用与生成端对称的量化系数 (32767)
-                    final_prompt_samples = np.frombuffer(prompt_samples, dtype=np.int16).astype(np.float32) / 32767.0
-                    # 裁剪限幅，防止计算过程中的溢出
-                    final_prompt_samples = np.clip(final_prompt_samples, -1.0, 1.0)
-                    logger.debug(f"Using {len(final_prompt_samples)} samples for context prompt (Normalization: 32767)")
-                
-                # 其次使用文件路径 (Profile Mode)
-                elif prompt_audio:
-                    prompt_container = av.open(prompt_audio)
-                    for frame in prompt_container.decode(audio=0):
-                        s = frame.to_ndarray().flatten().astype(np.float32)
-                        if frame.format.name == 's16':
-                            s = s / 32768.0
-                        final_prompt_samples.extend(s)
-                    prompt_container.close()
+            # 自动进行语言推断
+            lang_code = "zh" if self._has_chinese(text) else "en"
+            
+            ref_audio_input = None
+            ref_text_input = prompt_text
 
-                # 调用符合 ZipVoice 签名的 generate 方法
-                audio = self.tts.generate(
+            if prompt_samples:
+                # 将 int16 字节流转换为 float32 采样并归一化到 [-1.0, 1.0]
+                float_samples = np.frombuffer(prompt_samples, dtype=np.int16).astype(np.float32) / 32767.0
+                float_samples = np.clip(float_samples, -1.0, 1.0)
+                # 包装为 mlx 数组格式
+                ref_audio_input = mx.array(float_samples)
+                logger.debug(f"Using {len(float_samples)} samples from PCM bytes for infilling context")
+            elif prompt_audio:
+                # 直接传递音频文件路径
+                ref_audio_input = prompt_audio
+                logger.debug(f"Using audio file path: {prompt_audio} for voice profile cloning")
+
+            # 调用 OmniVoice 的 generate 接口 (返回一个生成 GenerationResult 的 generator)
+            if ref_audio_input is not None and ref_text_input:
+                results = self.model.generate(
                     text=text,
-                    prompt_text=prompt_text,
-                    prompt_samples=final_prompt_samples,
-                    sample_rate=24000, 
-                    speed=speed,
-                    num_steps=self.num_steps
+                    ref_audio=ref_audio_input,
+                    ref_text=ref_text_input,
+                    lang_code=lang_code,
+                    num_steps=self.num_steps,
+                    speed=speed
                 )
             else:
-                raise TTSInferenceError("ZipVoice requires prompt_audio/samples and prompt_text")
+                results = self.model.generate(
+                    text=text,
+                    lang_code=lang_code,
+                    num_steps=self.num_steps,
+                    speed=speed
+                )
 
-            # 将 float 格式的 audio samples 转换为 int16 PCM (mono)
-            pcm = (np.array(audio.samples) * 32767).astype(np.int16)
+            # 获取合成结果
+            result = next(results)
+            
+            # 将 mx.array 类型的 result.audio 转换为 np.ndarray
+            audio_samples = np.array(result.audio)
+            
+            # 将 float32 格式的音频采样转换为 int16 PCM (mono)
+            pcm = (audio_samples * 32767).astype(np.int16)
             pcm_bytes = pcm.tobytes()
-            logger.info(f"Synthesis success: {len(audio.samples)} samples generated ({len(pcm_bytes)} bytes)")
-            return pcm_bytes, audio.sample_rate
+            
+            logger.info(f"Synthesis success: {len(audio_samples)} samples generated ({len(pcm_bytes)} bytes)")
+            return pcm_bytes, result.sample_rate
             
         except Exception as e:
             logger.error(f"TTS Engine internal error: {e}")
             raise TTSInferenceError(f"Internal synthesis failure: {e}")
 
     def warmup(self):
-        """预热推理 (ZipVoice 模式下仅进行模型状态确认)"""
-        logger.info("TTSEngine is initialized and ready (Warmup bypassed for context-based model)")
+        """预热推理 (进行基础状态确认)"""
+        logger.info("TTSEngine is initialized and ready")

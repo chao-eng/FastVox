@@ -12,11 +12,11 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8047
     
-    # 推理参数 (ZipVoice Specific)
-    model_dir: str = "./models/zipvoice"
-    num_workers: int = 2
+    # 推理参数 (OmniVoice Specific)
+    model_name: str = "k2-fsa/OmniVoice"
+    num_workers: int = 1
     intra_op_threads: int = 1
-    zipvoice_num_steps: int = 6
+    omnivoice_num_steps: int = 32
     
     # 共享内存 (Ring Buffer)
     shm_name: str = "fastvox_shm_v8mb"

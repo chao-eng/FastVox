@@ -25,7 +25,7 @@ def worker_main(
     worker_id: int,
     shm_name: str,
     uds_gateway_addr: str,
-    model_dir: str,
+    model_name: str,
     task_queue: Queue,
     num_threads: int,
     num_steps: int
@@ -49,7 +49,7 @@ def worker_main(
     uds = UDSClient(uds_gateway_addr)
     
     # 3. 初始化推理引擎
-    engine = TTSEngine(model_dir, num_threads, num_steps)
+    engine = TTSEngine(model_name, num_threads, num_steps)
     engine.warmup()
     
     # 4. 主循环监视任务队列
@@ -118,10 +118,10 @@ class WorkerPool:
             worker_id,
             settings.shm_name,
             settings.uds_gateway_addr,
-            settings.model_dir,
+            settings.model_name,
             self._task_queue,
             settings.intra_op_threads,
-            settings.zipvoice_num_steps
+            settings.omnivoice_num_steps
         )
         p = Process(target=worker_main, args=args, name=f"FastVox-Worker-{worker_id}")
         p.daemon = True # 随主进程一同退出
